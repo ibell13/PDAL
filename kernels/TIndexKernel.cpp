@@ -118,6 +118,8 @@ void TIndexKernel::addSubSwitches(ProgramArgs& args,
             "Write absolute rather than relative file paths", m_absPath);
         args.add("stdin,s", "Read filespec pattern from standard input",
             m_usestdin);
+        args.add("threads", "Number of threads to use for file processing",
+            m_threads);
     }
     else if (subcommand == "merge")
     {
@@ -275,30 +277,39 @@ void TIndexKernel::createFile()
 
     size_t filecount(0);
     StageFactory factory(false);
+    ThreadPool pool(m_threads);
+            const std::chrono::time_point<std::chrono::steady_clock> start =
+            std::chrono::steady_clock::now();
     for (auto f : m_files)
     {
-        const std::chrono::time_point<std::chrono::steady_clock> start =
-            std::chrono::steady_clock::now();
         //ABELL - Not sure why we need to get absolute path here.
         f = FileUtils::toAbsolutePath(f);
-        FileInfo info;
-        if (getFileInfo(factory, f, info))
+        
+        pool.add([this, f, &factory, &indexes]() 
         {
-            filecount++;
-            if (!isFileIndexed(indexes, info))
+            FileInfo info;
+            if (getFileInfo(factory, f, info))
             {
-                if (createFeature(indexes, info))
-                    m_log->get(LogLevel::Info) << "Indexed file " << f <<
-                    std::endl;
-                else
-                    m_log->get(LogLevel::Error) << "Failed to create feature "
-                        "for file '" << f << "'" << std::endl;
+                if (!isFileIndexed(indexes, info))
+                {
+                    if (createFeature(indexes, info))
+                        m_log->get(LogLevel::Info) << "Indexed file " << f <<
+                        std::endl;
+                    else
+                        m_log->get(LogLevel::Error) << "Failed to create feature "
+                            "for file '" << f << "'" << std::endl;
+                }
             }
         }
-        const std::chrono::time_point<std::chrono::steady_clock> end =
-            std::chrono::steady_clock::now();
-        std::cout << "file processing took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " milliseconds\n";
+        );
+        // this doesn't tell us anything useful - something needs to be incremented in
+        // the lambda, or we need another way to determine no files were indexed. 
+        filecount++;
     }
+    pool.await();
+    const std::chrono::time_point<std::chrono::steady_clock> end =
+        std::chrono::steady_clock::now();
+    std::cout << "file processing took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " milliseconds\n";
     if (!filecount)
         throw pdal_error("Couldn't index any files.");
     OGR_DS_Destroy(m_dataset);

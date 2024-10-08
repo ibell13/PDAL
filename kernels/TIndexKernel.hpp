@@ -106,6 +106,7 @@ private:
     std::string m_wkt;
     BOX2D m_bounds;
     bool m_absPath;
+    int m_threads;
 
     void *m_dataset;
     void *m_layer;
