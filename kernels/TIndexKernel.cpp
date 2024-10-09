@@ -119,7 +119,7 @@ void TIndexKernel::addSubSwitches(ProgramArgs& args,
         args.add("stdin,s", "Read filespec pattern from standard input",
             m_usestdin);
         args.add("threads", "Number of threads to use for file processing",
-            m_threads);
+            m_threads, 1);
     }
     else if (subcommand == "merge")
     {
@@ -278,8 +278,7 @@ void TIndexKernel::createFile()
     size_t filecount(0);
     StageFactory factory(false);
     ThreadPool pool(m_threads);
-            const std::chrono::time_point<std::chrono::steady_clock> start =
-            std::chrono::steady_clock::now();
+
     for (auto f : m_files)
     {
         //ABELL - Not sure why we need to get absolute path here.
@@ -307,9 +306,6 @@ void TIndexKernel::createFile()
         filecount++;
     }
     pool.await();
-    const std::chrono::time_point<std::chrono::steady_clock> end =
-        std::chrono::steady_clock::now();
-    std::cout << "file processing took " << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << " milliseconds\n";
     if (!filecount)
         throw pdal_error("Couldn't index any files.");
     OGR_DS_Destroy(m_dataset);
