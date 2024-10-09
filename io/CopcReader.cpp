@@ -34,9 +34,10 @@
 
 #include "CopcReader.hpp"
 
+#include <algorithm>
+#include <atomic>
 #include <functional>
 #include <limits>
-#include <algorithm>
 
 #include <nlohmann/json.hpp>
 
@@ -413,8 +414,7 @@ void CopcReader::initialize(PointTableRef table)
         0;
 
     if (m_args->resolution)
-        log()->get(LogLevel::Debug) << "Maximum depth: " << m_p->depthEnd << 
-            std::endl;
+        log()->get(LogLevel::Debug) << "Maximum depth: " << m_p->depthEnd << std::endl;
 }
 
 
