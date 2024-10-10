@@ -115,6 +115,7 @@ private:
     bool m_fastBoundary;
     bool m_usestdin;
     bool m_overrideASrs;
+    std::mutex m_mutex;
 };
 
 } // namespace pdal

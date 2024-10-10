@@ -289,6 +289,7 @@ void TIndexKernel::createFile()
             FileInfo info;
             if (getFileInfo(factory, f, info))
             {
+                std::unique_lock<std::mutex> l(m_mutex);
                 if (!isFileIndexed(indexes, info))
                 {
                     if (createFeature(indexes, info))
@@ -298,6 +299,7 @@ void TIndexKernel::createFile()
                         m_log->get(LogLevel::Error) << "Failed to create feature "
                             "for file '" << f << "'" << std::endl;
                 }
+                l.unlock();
             }
         }
         );
@@ -490,13 +492,16 @@ bool TIndexKernel::slowBoundary(PipelineManager& manager, FileInfo& fileInfo)
     MetadataNode root = manager.getMetadata();
 
     // If we had an error set, bail out
-    MetadataNode e = root.findChild("filters.hexbin:error");
+    MetadataNode e = root.findChild("filters.hex_boundary:error");
     if (e.valid())
         return false;
 
-    MetadataNode m = root.findChild("filters.hexbin:boundary");
+    MetadataNode m = root.findChild("filters.hex_boundary:boundary");
     fileInfo.m_boundary = m.value();
 
+    MetadataNode s = root.findChild("filters.hex_boundary:srs");
+    if (s.valid())
+        fileInfo.m_srs = s.value(); 
 /*     PointViewPtr v = *set.begin();
     if (!v->spatialReference().empty())
         fileInfo.m_srs = v->spatialReference().getWKT(); */
@@ -521,7 +526,8 @@ bool TIndexKernel::getFileInfo(StageFactory& factory,
     {
         if (!fast)
         {
-            Stage& hexer = manager.makeFilter("filters.hexbin", reader);
+            Stage& hexer = manager.makeFilter("filters.hex_boundary",
+                reader);
             fast = !slowBoundary(manager, fileInfo);
         }
     }
