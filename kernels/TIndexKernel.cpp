@@ -488,7 +488,6 @@ bool TIndexKernel::slowBoundary(PipelineManager& manager, FileInfo& fileInfo)
 {
     manager.prepare();
     manager.execute(ExecMode::PreferStream);
-    //PointViewSet set = manager.views();
     MetadataNode root = manager.getMetadata();
 
     // If we had an error set, bail out
@@ -502,9 +501,7 @@ bool TIndexKernel::slowBoundary(PipelineManager& manager, FileInfo& fileInfo)
     MetadataNode s = root.findChild("filters.hex_boundary:srs");
     if (s.valid())
         fileInfo.m_srs = s.value(); 
-/*     PointViewPtr v = *set.begin();
-    if (!v->spatialReference().empty())
-        fileInfo.m_srs = v->spatialReference().getWKT(); */
+
     return true;
 }
 
