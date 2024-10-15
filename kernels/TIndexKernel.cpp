@@ -534,8 +534,10 @@ bool TIndexKernel::getFileInfo(StageFactory& factory,
     }
     if (fast && !fastBoundary(reader, fileInfo))
     {
+        std::unique_lock<std::mutex> l(m_mutex);
         m_log->get(LogLevel::Error) << "Skipping file '" << filename <<
             "': can't compute boundary." << std::endl;
+        l.unlock();
         return false;
     }
     FileUtils::fileTimes(filename, &fileInfo.m_ctime, &fileInfo.m_mtime);
