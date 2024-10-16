@@ -481,16 +481,15 @@ bool TIndexKernel::createFeature(const FieldIndexes& indexes,
 }
 
 
-bool TIndexKernel::fastBoundary(Stage& reader, FileInfo& fileInfo)
+void TIndexKernel::fastBoundary(Stage& reader, FileInfo& fileInfo)
 {
     QuickInfo qi = reader.preview();
     if (!qi.valid())
-        return false;
+        return;
 
     fileInfo.m_boundary = qi.m_bounds.to2d().toWKT();
     if (!qi.m_srs.empty())
         fileInfo.m_srs = qi.m_srs.getWKT();
-    return true;
 }
 
 
@@ -541,9 +540,8 @@ void TIndexKernel::getFileInfo(StageFactory& factory, FileInfo& fileInfo)
     {
         fast = true;
     }
-    // make fastBoundary void function?
-    if (fast && !fastBoundary(reader, fileInfo))
-        return;
+    if (fast)
+        fastBoundary(reader, fileInfo);
 }
 
 
