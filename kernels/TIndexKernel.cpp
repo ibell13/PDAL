@@ -273,41 +273,51 @@ void TIndexKernel::createFile()
             throw pdal_error(out.str());
         }
 
+    // there's probably a better way to create this vector
+    std::vector<FileInfo> infos;
+    for (auto f : m_files)
+    {
+        FileInfo info;
+        info.m_filename = FileUtils::toAbsolutePath(f);
+        FileUtils::fileTimes(info.m_filename, &info.m_ctime, &info.m_mtime);
+        infos.push_back(info);
+    }
+
     FieldIndexes indexes = getFields();
 
     size_t filecount(0);
     StageFactory factory(false);
     ThreadPool pool(m_threads);
 
-    for (auto f : m_files)
+    for (auto &i : infos)
     {
-        //ABELL - Not sure why we need to get absolute path here.
-        f = FileUtils::toAbsolutePath(f);
-        
-        pool.add([this, f, &factory, &indexes]() 
+        pool.add([this, &i, &factory]()
         {
-            FileInfo info;
-            if (getFileInfo(factory, f, info))
-            {
-                std::unique_lock<std::mutex> l(m_mutex);
-                if (!isFileIndexed(indexes, info))
-                {
-                    if (createFeature(indexes, info))
-                        m_log->get(LogLevel::Info) << "Indexed file " << f <<
-                        std::endl;
-                    else
-                        m_log->get(LogLevel::Error) << "Failed to create feature "
-                            "for file '" << f << "'" << std::endl;
-                }
-                l.unlock();
-            }
-        }
-        );
-        // this doesn't tell us anything useful - something needs to be incremented in
-        // the lambda, or we need another way to determine no files were indexed. 
-        filecount++;
+            getFileInfo(factory, i);
+        });
     }
     pool.await();
+    for (auto i : infos)
+    {
+        if (!i.m_boundary.empty())
+        {
+            if (!isFileIndexed(indexes, i))
+            {
+                if (createFeature(indexes, i))
+                {
+                    filecount++;
+                    m_log->get(LogLevel::Info) << "Indexed file " << i.m_filename <<
+                        std::endl;
+                }
+                else
+                    m_log->get(LogLevel::Error) << "Failed to create feature "
+                        "for file '" << i.m_filename << "'" << std::endl;
+            }
+        }
+        else
+            m_log->get(LogLevel::Error) << "Skipping file '" << i.m_filename <<
+                "': can't compute boundary." << std::endl;
+    }
     if (!filecount)
         throw pdal_error("Couldn't index any files.");
     OGR_DS_Destroy(m_dataset);
@@ -506,15 +516,14 @@ bool TIndexKernel::slowBoundary(PipelineManager& manager, FileInfo& fileInfo)
 }
 
 
-bool TIndexKernel::getFileInfo(StageFactory& factory,
-    const std::string& filename, FileInfo& fileInfo)
+void TIndexKernel::getFileInfo(StageFactory& factory, FileInfo& fileInfo)
 {
     PipelineManager manager;
     manager.commonOptions() = m_manager.commonOptions();
     manager.stageOptions() = m_manager.stageOptions();
 
     // Need to make sure options get set.
-    Stage& reader = manager.makeReader(filename, "");
+    Stage& reader = manager.makeReader(fileInfo.m_filename, "");
 
     // If we aren't able to make a hexbin filter, we
     // will just do a simple fast_boundary.
@@ -532,18 +541,9 @@ bool TIndexKernel::getFileInfo(StageFactory& factory,
     {
         fast = true;
     }
+    // make fastBoundary void function?
     if (fast && !fastBoundary(reader, fileInfo))
-    {
-        std::unique_lock<std::mutex> l(m_mutex);
-        m_log->get(LogLevel::Error) << "Skipping file '" << filename <<
-            "': can't compute boundary." << std::endl;
-        l.unlock();
-        return false;
-    }
-    FileUtils::fileTimes(filename, &fileInfo.m_ctime, &fileInfo.m_mtime);
-    fileInfo.m_filename = filename;
-
-    return true;
+        return;
 }
 
 

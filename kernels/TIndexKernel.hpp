@@ -86,8 +86,7 @@ private:
     bool openLayer(const std::string& layerName);
     bool createLayer(const std::string& layerName);
     FieldIndexes getFields();
-    bool getFileInfo(StageFactory& factory, const std::string& filename,
-        FileInfo& info);
+    void getFileInfo(StageFactory& factory, FileInfo& info);
     bool createFeature(const FieldIndexes& indexes, FileInfo& info);
     pdal::Polygon prepareGeometry(const FileInfo& fileInfo);
     void createFields();
