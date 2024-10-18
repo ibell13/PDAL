@@ -34,9 +34,17 @@
 
 #pragma once
 
+#include <pdal/Filter.hpp>
+#include <pdal/Streamable.hpp>
 #include <pdal/Stage.hpp>
 #include <pdal/SubcommandKernel.hpp>
 #include <pdal/util/FileUtils.hpp>
+#include <filters/private/hexer/HexGrid.hpp>
+
+namespace hexer
+{
+    class HexGrid;
+}
 
 namespace pdal
 {
@@ -56,6 +64,7 @@ class PDAL_DLL TIndexKernel : public SubcommandKernel
         std::string m_filename;
         std::string m_srs;
         std::string m_boundary;
+        double m_gridHeight;
         struct tm m_ctime;
         struct tm m_mtime;
     };
@@ -91,7 +100,7 @@ private:
     pdal::Polygon prepareGeometry(const FileInfo& fileInfo);
     void createFields();
     void fastBoundary(Stage& reader, FileInfo& fileInfo);
-    bool slowBoundary(PipelineManager& manager, FileInfo& fileInfo);
+    void slowBoundary(PipelineManager& manager, FileInfo& fileInfo);
 
     bool isFileIndexed( const FieldIndexes& indexes, const FileInfo& fileInfo);
 
@@ -106,6 +115,10 @@ private:
     BOX2D m_bounds;
     bool m_absPath;
     int m_threads;
+    bool m_doSmooth;
+    int32_t m_density;
+    double m_edgeLength;
+    uint32_t m_sampleSize;
 
     void *m_dataset;
     void *m_layer;
@@ -115,6 +128,82 @@ private:
     bool m_usestdin;
     bool m_overrideASrs;
     std::mutex m_mutex;
+};
+
+class TindexBoundary : public Filter, public Streamable
+{
+public:
+    TindexBoundary(int density, double edgeLength, int sampleSize)
+        : m_density(density), m_edgeLength(edgeLength),
+        m_sampleSize(sampleSize)
+    {}
+    ~TindexBoundary()
+    {}
+
+    std::string getName() const
+    { return "tindex-boundary"; }
+    std::string getSRS()
+    { return m_srs.getWKT(); }
+    double height()
+    { return m_grid->height(); }
+    std::string toWKT()
+    {
+        std::ostringstream out;
+        out.setf(std::ios_base::fixed, std::ios_base::floatfield);
+        out.precision(10);
+        m_grid->toWKT(out);
+        return out.str();
+    }
+private:
+    std::unique_ptr<hexer::HexGrid> m_grid;
+    // uint32_t m_precision;
+    int32_t m_density;
+    double m_edgeLength;
+    uint32_t m_sampleSize;
+    SpatialReference m_srs;
+
+    virtual void ready(PointTableRef table)
+    {
+        if (m_edgeLength == 0.0)
+        {
+            m_grid.reset(new hexer::HexGrid(m_density));
+            m_grid->setSampleSize(m_sampleSize);
+        }
+        else
+            m_grid.reset(new hexer::HexGrid(m_edgeLength * sqrt(3), m_density));
+    }
+    virtual void filter(PointView& view)
+    {
+        PointRef p(view, 0);
+
+        for (PointId idx = 0; idx < view.size(); ++idx)
+        {
+            p.setPointId(idx);
+            processOne(p);
+        }
+    }
+    virtual bool processOne(PointRef& point)
+    {
+        double x = point.getFieldAs<double>(Dimension::Id::X);
+        double y = point.getFieldAs<double>(Dimension::Id::Y);
+        m_grid->addXY(x, y);
+        return true;
+    }
+    virtual void spatialReferenceChanged(const SpatialReference& srs)
+    { m_srs = srs; }
+    virtual void done(PointTableRef table)
+    {
+        try
+        {
+            m_grid->findShapes();
+            m_grid->findParentPaths();
+        }
+        catch (hexer::hexer_error& e)
+        {
+            throwError(e.what());
+            m_grid.reset(new hexer::HexGrid(m_density));
+        }
+    }
 };
 
 } // namespace pdal

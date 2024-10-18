@@ -120,6 +120,13 @@ void TIndexKernel::addSubSwitches(ProgramArgs& args,
             m_usestdin);
         args.add("threads", "Number of threads to use for file processing",
             m_threads, 1);
+        args.add("smooth", "Smooth boundary output", m_doSmooth, true);
+        args.add("threshold", "Required cell density, to be used in internal "
+            "hexbin filter (non-fast boundary)", m_density, 15);
+        args.add("edge_length", "cell edge length to be used in internal hexbin "
+            "filter (non-fast boundary)", m_edgeLength);
+        args.add("sample_size", "Sample size for auto-edge length calculation in "
+            "internal hexbin filter (non-fast boundary)", m_sampleSize, 5000U);
     }
     else if (subcommand == "merge")
     {
@@ -490,28 +497,14 @@ void TIndexKernel::fastBoundary(Stage& reader, FileInfo& fileInfo)
     fileInfo.m_boundary = qi.m_bounds.to2d().toWKT();
     if (!qi.m_srs.empty())
         fileInfo.m_srs = qi.m_srs.getWKT();
+    fileInfo.m_gridHeight = 0.0;
 }
 
 
-bool TIndexKernel::slowBoundary(PipelineManager& manager, FileInfo& fileInfo)
+void TIndexKernel::slowBoundary(PipelineManager& manager, FileInfo& fileInfo)
 {
     manager.prepare();
     manager.execute(ExecMode::PreferStream);
-    MetadataNode root = manager.getMetadata();
-
-    // If we had an error set, bail out
-    MetadataNode e = root.findChild("filters.hex_boundary:error");
-    if (e.valid())
-        return false;
-
-    MetadataNode m = root.findChild("filters.hex_boundary:boundary");
-    fileInfo.m_boundary = m.value();
-
-    MetadataNode s = root.findChild("filters.hex_boundary:srs");
-    if (s.valid())
-        fileInfo.m_srs = s.value(); 
-
-    return true;
 }
 
 
@@ -523,6 +516,7 @@ void TIndexKernel::getFileInfo(StageFactory& factory, FileInfo& fileInfo)
 
     // Need to make sure options get set.
     Stage& reader = manager.makeReader(fileInfo.m_filename, "");
+    TindexBoundary hexer{TindexBoundary(m_density, m_edgeLength, m_sampleSize)};
 
     // If we aren't able to make a hexbin filter, we
     // will just do a simple fast_boundary.
@@ -531,9 +525,9 @@ void TIndexKernel::getFileInfo(StageFactory& factory, FileInfo& fileInfo)
     {
         if (!fast)
         {
-            Stage& hexer = manager.makeFilter("filters.hex_boundary",
-                reader);
-            fast = !slowBoundary(manager, fileInfo);
+            hexer.setInput(reader);
+            manager.addStage(&hexer);
+            slowBoundary(manager, fileInfo);
         }
     }
     catch (pdal_error&)
@@ -542,6 +536,12 @@ void TIndexKernel::getFileInfo(StageFactory& factory, FileInfo& fileInfo)
     }
     if (fast)
         fastBoundary(reader, fileInfo);
+    else
+    {
+        fileInfo.m_boundary = hexer.toWKT();
+        fileInfo.m_srs = hexer.getSRS();
+        fileInfo.m_gridHeight = hexer.height();
+    }
 }
 
 
@@ -663,6 +663,12 @@ pdal::Polygon TIndexKernel::prepareGeometry(const FileInfo& fileInfo)
     using namespace gdal;
 
     Polygon g(fileInfo.m_boundary, fileInfo.m_srs);
+    if (fileInfo.m_gridHeight && m_doSmooth)
+    {
+        double tolerance = 1.1 * fileInfo.m_gridHeight / 2;
+        double cull = (6 * tolerance * tolerance);
+        g.simplify(tolerance, cull, true);
+    }
     if (m_tgtSrsString.size())
     {
         SpatialReference out(m_tgtSrsString);
