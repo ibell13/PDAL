@@ -284,7 +284,7 @@ void TIndexKernel::createFile()
     for (auto f : m_files)
     {
         FileInfo info;
-        info.m_filename = FileUtils::toAbsolutePath(f);
+        info.m_filename = f;
         FileUtils::fileTimes(info.m_filename, &info.m_ctime, &info.m_mtime);
         infos.push_back(info);
     }
