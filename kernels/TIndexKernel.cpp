@@ -484,7 +484,7 @@ void TIndexKernel::fastBoundary(Stage& reader, FileInfo& fileInfo)
     if (!qi.valid())
         return;
 
-    fileInfo.m_boundary = qi.m_bounds.to2d().toWKT();
+    fileInfo.m_boundary = makeMultiPolygon(qi.m_bounds.to2d().toWKT());
     if (!qi.m_srs.empty())
         fileInfo.m_srs = qi.m_srs.getWKT();
     fileInfo.m_gridHeight = 0.0;
@@ -578,7 +578,7 @@ bool TIndexKernel::createLayer(std::string const& layername)
            "creation" << std::endl;
 
     m_layer = OGR_DS_CreateLayer(m_dataset, m_layerName.c_str(),
-        srs.get(), wkbPolygon, NULL);
+        srs.get(), wkbMultiPolygon, NULL);
 
     if (m_layer)
         createFields();
@@ -657,13 +657,29 @@ pdal::Polygon TIndexKernel::prepareGeometry(const FileInfo& fileInfo)
         double tolerance = 1.1 * fileInfo.m_gridHeight / 2;
         double cull = (6 * tolerance * tolerance);
         g.simplify(tolerance, cull);
+        if (g.wkt()[0] == 'P')
+        {
+            std::string multi = makeMultiPolygon(g.wkt());
+            g.clear();
+            Polygon g(multi, fileInfo.m_srs);
+        }
     }
     if (m_tgtSrsString.size())
     {
         SpatialReference out(m_tgtSrsString);
         g.transform(out);
     }
+    std::cout << g.wkt().substr(0,21) << std::endl;
     return g;
+}
+
+
+std::string TIndexKernel::makeMultiPolygon(const std::string& wkt)
+{
+    std::string multi = wkt + ')';
+    multi.insert(8, "(");
+    multi.insert(0, "MULTI");
+    return multi;
 }
 
 } // namespace pdal

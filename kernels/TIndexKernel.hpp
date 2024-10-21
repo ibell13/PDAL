@@ -101,6 +101,7 @@ private:
     void createFields();
     void fastBoundary(Stage& reader, FileInfo& fileInfo);
     void slowBoundary(PipelineManager& manager, FileInfo& fileInfo);
+    std::string makeMultiPolygon(const std::string& wkt);
 
     bool isFileIndexed( const FieldIndexes& indexes, const FileInfo& fileInfo);
 
