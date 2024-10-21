@@ -118,7 +118,7 @@ void TIndexKernel::addSubSwitches(ProgramArgs& args,
             "Write absolute rather than relative file paths", m_absPath);
         args.add("stdin,s", "Read filespec pattern from standard input",
             m_usestdin);
-        args.add("threads", "Number of threads to use for file processing",
+        args.add("threads", "Number of threads to use for file boundary creation",
             m_threads, 1);
         args.add("smooth", "Smooth boundary output", m_doSmooth, true);
         args.add("threshold", "Required cell density, to be used in internal "
@@ -280,7 +280,6 @@ void TIndexKernel::createFile()
             throw pdal_error(out.str());
         }
 
-    // there's probably a better way to create this vector
     std::vector<FileInfo> infos;
     for (auto f : m_files)
     {
@@ -290,42 +289,25 @@ void TIndexKernel::createFile()
         infos.push_back(info);
     }
 
-    FieldIndexes indexes = getFields();
-
-    size_t filecount(0);
-    StageFactory factory(false);
     ThreadPool pool(m_threads);
 
-    for (auto &i : infos)
+    for (auto &info : infos)
     {
-        pool.add([this, &i, &factory]()
+        pool.add([this, &info]()
         {
-            getFileInfo(factory, i);
+            getFileInfo(info);
         });
     }
     pool.await();
-    for (auto i : infos)
+
+    bool indexedFile(false);
+    FieldIndexes indexes = getFields();
+    for (auto info : infos)
     {
-        if (!i.m_boundary.empty())
-        {
-            if (!isFileIndexed(indexes, i))
-            {
-                if (createFeature(indexes, i))
-                {
-                    filecount++;
-                    m_log->get(LogLevel::Info) << "Indexed file " << i.m_filename <<
-                        std::endl;
-                }
-                else
-                    m_log->get(LogLevel::Error) << "Failed to create feature "
-                        "for file '" << i.m_filename << "'" << std::endl;
-            }
-        }
-        else
-            m_log->get(LogLevel::Error) << "Skipping file '" << i.m_filename <<
-                "': can't compute boundary." << std::endl;
+        if (!info.m_boundary.empty() && !isFileIndexed(indexes, info))
+            indexedFile |= createFeature(indexes, info);
     }
-    if (!filecount)
+    if (!indexedFile)
         throw pdal_error("Couldn't index any files.");
     OGR_DS_Destroy(m_dataset);
     m_dataset = nullptr;
@@ -484,6 +466,14 @@ bool TIndexKernel::createFeature(const FieldIndexes& indexes,
 
     const bool bRet = (OGR_L_CreateFeature(m_layer, hFeature) == OGRERR_NONE);
     OGR_F_Destroy(hFeature);
+
+    if (bRet)
+        m_log->get(LogLevel::Info) << "Indexed file " << fileInfo.m_filename <<
+            std::endl;
+    else
+        m_log->get(LogLevel::Error) << "Failed to create feature "
+            "for file '" << fileInfo.m_filename << "'" << std::endl;
+
     return bRet;
 }
 
@@ -508,7 +498,7 @@ void TIndexKernel::slowBoundary(PipelineManager& manager, FileInfo& fileInfo)
 }
 
 
-void TIndexKernel::getFileInfo(StageFactory& factory, FileInfo& fileInfo)
+void TIndexKernel::getFileInfo(FileInfo& fileInfo)
 {
     PipelineManager manager;
     manager.commonOptions() = m_manager.commonOptions();
@@ -516,7 +506,6 @@ void TIndexKernel::getFileInfo(StageFactory& factory, FileInfo& fileInfo)
 
     // Need to make sure options get set.
     Stage& reader = manager.makeReader(fileInfo.m_filename, "");
-    TindexBoundary hexer{TindexBoundary(m_density, m_edgeLength, m_sampleSize)};
 
     // If we aren't able to make a hexbin filter, we
     // will just do a simple fast_boundary.
@@ -525,9 +514,15 @@ void TIndexKernel::getFileInfo(StageFactory& factory, FileInfo& fileInfo)
     {
         if (!fast)
         {
+            TindexBoundary hexer{m_density, m_edgeLength, m_sampleSize};
+
             hexer.setInput(reader);
             manager.addStage(&hexer);
             slowBoundary(manager, fileInfo);
+
+            fileInfo.m_boundary = hexer.toWKT();
+            fileInfo.m_srs = hexer.getSpatialReference().getWKT();
+            fileInfo.m_gridHeight = hexer.height();
         }
     }
     catch (pdal_error&)
@@ -536,12 +531,6 @@ void TIndexKernel::getFileInfo(StageFactory& factory, FileInfo& fileInfo)
     }
     if (fast)
         fastBoundary(reader, fileInfo);
-    else
-    {
-        fileInfo.m_boundary = hexer.toWKT();
-        fileInfo.m_srs = hexer.getSRS();
-        fileInfo.m_gridHeight = hexer.height();
-    }
 }
 
 

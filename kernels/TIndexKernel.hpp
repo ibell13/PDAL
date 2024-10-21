@@ -95,7 +95,7 @@ private:
     bool openLayer(const std::string& layerName);
     bool createLayer(const std::string& layerName);
     FieldIndexes getFields();
-    void getFileInfo(StageFactory& factory, FileInfo& info);
+    void getFileInfo(FileInfo& info);
     bool createFeature(const FieldIndexes& indexes, FileInfo& info);
     pdal::Polygon prepareGeometry(const FileInfo& fileInfo);
     void createFields();
@@ -133,7 +133,7 @@ private:
 class TindexBoundary : public Filter, public Streamable
 {
 public:
-    TindexBoundary(int density, double edgeLength, int sampleSize)
+    TindexBoundary(int32_t density, double edgeLength, uint32_t sampleSize)
         : m_density(density), m_edgeLength(edgeLength),
         m_sampleSize(sampleSize)
     {}
@@ -142,8 +142,6 @@ public:
 
     std::string getName() const
     { return "tindex-boundary"; }
-    std::string getSRS()
-    { return m_srs.getWKT(); }
     double height()
     { return m_grid->height(); }
     std::string toWKT()
@@ -160,7 +158,6 @@ private:
     int32_t m_density;
     double m_edgeLength;
     uint32_t m_sampleSize;
-    SpatialReference m_srs;
 
     virtual void ready(PointTableRef table)
     {
@@ -190,7 +187,7 @@ private:
         return true;
     }
     virtual void spatialReferenceChanged(const SpatialReference& srs)
-    { m_srs = srs; }
+    { setSpatialReference(srs); }
     virtual void done(PointTableRef table)
     {
         try
