@@ -661,7 +661,7 @@ pdal::Polygon TIndexKernel::prepareGeometry(const FileInfo& fileInfo)
         {
             std::string multi = makeMultiPolygon(g.wkt());
             g.clear();
-            Polygon g(multi, fileInfo.m_srs);
+            g = Polygon(multi, fileInfo.m_srs);
         }
     }
     if (m_tgtSrsString.size())
