@@ -656,7 +656,7 @@ pdal::Polygon TIndexKernel::prepareGeometry(const FileInfo& fileInfo)
     {
         double tolerance = 1.1 * fileInfo.m_gridHeight / 2;
         double cull = (6 * tolerance * tolerance);
-        g.simplify(tolerance, cull, true);
+        g.simplify(tolerance, cull);
     }
     if (m_tgtSrsString.size())
     {
