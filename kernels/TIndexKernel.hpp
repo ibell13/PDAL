@@ -155,7 +155,6 @@ public:
     }
 private:
     std::unique_ptr<hexer::HexGrid> m_grid;
-    // uint32_t m_precision;
     int32_t m_density;
     double m_edgeLength;
     uint32_t m_sampleSize;

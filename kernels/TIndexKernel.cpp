@@ -668,7 +668,7 @@ pdal::Polygon TIndexKernel::prepareGeometry(const FileInfo& fileInfo)
         SpatialReference out(m_tgtSrsString);
         g.transform(out);
     }
-    std::cout << g.wkt().substr(0,21) << std::endl;
+
     return g;
 }
 
