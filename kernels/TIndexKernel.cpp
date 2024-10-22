@@ -193,14 +193,17 @@ void TIndexKernel::addSubSwitches(ProgramArgs& args,
         args.add("threads", "Number of threads to use for file boundary creation",
             m_threads, 1);
         args.addSynonym("threads", "requests");
-        args.add("smooth", "Smooth boundary output", m_doSmooth, true);
+        args.add("simplify", "Simplify the file's exact boundary", m_doSmooth,
+            true);
+        args.addSynonym("simplify", "smooth");
         args.add("threshold", "Number of points a cell must contain to be "
-            "declared positive space in internal hexbin filter (non-fast "
-            "boundary)", m_density, 15);
-        args.add("edge_length", "cell edge length to be used in internal hexbin "
-            "filter (non-fast boundary)", m_edgeLength);
+            "declared positive space, when creating exact boundaries", m_density,
+            15);
+        args.add("resolution", "cell edge length to be used when creating exact "
+            "boundaries", m_edgeLength);
+        args.addSynonym("resolution", "edge_length");
         args.add("sample_size", "Sample size for auto-edge length calculation in "
-            "internal hexbin filter (non-fast boundary)", m_sampleSize, 5000U);
+            "internal hexbin filter (exact boundary)", m_sampleSize, 5000U);
     }
     else if (subcommand == "merge")
     {
