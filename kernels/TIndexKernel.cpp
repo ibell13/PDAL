@@ -41,10 +41,10 @@
 
 #include <pdal/PDALUtils.hpp>
 #include <pdal/Polygon.hpp>
-#include <pdal/StageFactory.hpp>
 #include <pdal/util/FileUtils.hpp>
 #include <pdal/private/gdal/GDALUtils.hpp>
 #include <pdal/private/gdal/SpatialRef.hpp>
+#include <filters/private/hexer/HexGrid.hpp>
 
 #include "../io/LasWriter.hpp"
 
@@ -66,6 +66,78 @@ void setDate(OGRFeatureH feature, const tm& tyme, int fieldNumber)
 
 namespace pdal
 {
+
+class TindexBoundary : public Filter, public Streamable
+{
+public:
+    TindexBoundary(int32_t density, double edgeLength, uint32_t sampleSize)
+        : m_density(density), m_edgeLength(edgeLength),
+        m_sampleSize(sampleSize)
+    {}
+    ~TindexBoundary()
+    {}
+
+    std::string getName() const
+    { return "tindex-boundary"; }
+    double height()
+    { return m_grid->height(); }
+    std::string toWKT()
+    {
+        std::ostringstream out;
+        out.setf(std::ios_base::fixed, std::ios_base::floatfield);
+        out.precision(10);
+        m_grid->toWKT(out);
+        return out.str();
+    }
+private:
+    std::unique_ptr<hexer::HexGrid> m_grid;
+    int32_t m_density;
+    double m_edgeLength;
+    uint32_t m_sampleSize;
+
+    virtual void ready(PointTableRef table)
+    {
+        if (m_edgeLength == 0.0)
+        {
+            m_grid.reset(new hexer::HexGrid(m_density));
+            m_grid->setSampleSize(m_sampleSize);
+        }
+        else
+            m_grid.reset(new hexer::HexGrid(m_edgeLength * sqrt(3), m_density));
+    }
+    virtual void filter(PointView& view)
+    {
+        PointRef p(view, 0);
+
+        for (PointId idx = 0; idx < view.size(); ++idx)
+        {
+            p.setPointId(idx);
+            processOne(p);
+        }
+    }
+    virtual bool processOne(PointRef& point)
+    {
+        double x = point.getFieldAs<double>(Dimension::Id::X);
+        double y = point.getFieldAs<double>(Dimension::Id::Y);
+        m_grid->addXY(x, y);
+        return true;
+    }
+    virtual void spatialReferenceChanged(const SpatialReference& srs)
+    { setSpatialReference(srs); }
+    virtual void done(PointTableRef table)
+    {
+        try
+        {
+            m_grid->findShapes();
+            m_grid->findParentPaths();
+        }
+        catch (hexer::hexer_error& e)
+        {
+            throwError(e.what());
+            m_grid.reset(new hexer::HexGrid(m_density));
+        }
+    }
+};
 
 static StaticPluginInfo const s_info
 {
@@ -120,9 +192,11 @@ void TIndexKernel::addSubSwitches(ProgramArgs& args,
             m_usestdin);
         args.add("threads", "Number of threads to use for file boundary creation",
             m_threads, 1);
+        args.addSynonym("threads", "requests");
         args.add("smooth", "Smooth boundary output", m_doSmooth, true);
-        args.add("threshold", "Required cell density, to be used in internal "
-            "hexbin filter (non-fast boundary)", m_density, 15);
+        args.add("threshold", "Number of points a cell must contain to be "
+            "declared positive space in internal hexbin filter (non-fast "
+            "boundary)", m_density, 15);
         args.add("edge_length", "cell edge length to be used in internal hexbin "
             "filter (non-fast boundary)", m_edgeLength);
         args.add("sample_size", "Sample size for auto-edge length calculation in "
@@ -302,7 +376,7 @@ void TIndexKernel::createFile()
 
     bool indexedFile(false);
     FieldIndexes indexes = getFields();
-    for (auto info : infos)
+    for (auto &info : infos)
     {
         if (!info.m_boundary.empty() && !isFileIndexed(indexes, info))
             indexedFile |= createFeature(indexes, info);
