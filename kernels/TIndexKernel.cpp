@@ -70,15 +70,13 @@ namespace pdal
 class TindexBoundary : public Filter, public Streamable
 {
 public:
-    TindexBoundary(int32_t density, double edgeLength, uint32_t sampleSize)
-        : m_density(density), m_edgeLength(edgeLength),
-        m_sampleSize(sampleSize)
+    TindexBoundary()
     {}
     ~TindexBoundary()
     {}
 
     std::string getName() const
-    { return "tindex-boundary"; }
+    { return "filters.tindex-boundary"; }
     double height()
     { return m_grid->height(); }
     std::string toWKT()
@@ -95,6 +93,13 @@ private:
     double m_edgeLength;
     uint32_t m_sampleSize;
 
+    virtual void addArgs(ProgramArgs& args)
+    {
+        args.add("sample_size", "Sample size for auto-edge length calculation",
+            m_sampleSize, 5000U);
+        args.add("threshold", "Required cell density", m_density, 15);
+        args.add("edge_length", "Length of hex edge", m_edgeLength);
+    }
     virtual void ready(PointTableRef table)
     {
         if (m_edgeLength == 0.0)
@@ -591,10 +596,16 @@ void TIndexKernel::getFileInfo(FileInfo& fileInfo)
     {
         if (!fast)
         {
-            TindexBoundary hexer{m_density, m_edgeLength, m_sampleSize};
-
+            TindexBoundary hexer;
+            Options opts;
+            opts.add("sample_size", m_sampleSize);
+            opts.add("threshold", m_density);
+            opts.add("edge_length", m_edgeLength);
+            opts.add("where", "Classification==2");
+            hexer.addOptions(opts);
             hexer.setInput(reader);
             manager.addStage(&hexer);
+
             slowBoundary(manager, fileInfo);
 
             fileInfo.m_boundary = hexer.toWKT();
@@ -602,8 +613,9 @@ void TIndexKernel::getFileInfo(FileInfo& fileInfo)
             fileInfo.m_gridHeight = hexer.height();
         }
     }
-    catch (pdal_error&)
+    catch (pdal_error& e)
     {
+        std::cout << e.what();
         fast = true;
     }
     if (fast)
