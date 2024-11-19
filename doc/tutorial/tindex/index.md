@@ -1,3 +1,15 @@
+---
+jupytext:
+  formats: md:myst
+  text_representation:
+    extension: .md
+    format_name: myst
+kernelspec:
+  display_name: Bash
+  language: bash
+  name: bash_kernel
+---
+
 (tindex-tutorial)=
 
 # Datasets with PDAL tindex
@@ -12,7 +24,7 @@ dataset.
 
 ## Introduction
 
-A PDAL tile index is essentially a version of GDAL's [gdaltindex], only
+A {ref}`PDAL tile index <tindex_command>` is essentially a version of GDAL's [gdaltindex], only
 for point clouds instead of raster files. Running the `pdal tindex create` command can
 create a new feature layer that contains the file locations and extents of a 
 data collection, and `pdal tindex merge` can use this tile index to combine and process
@@ -29,33 +41,33 @@ In this tutorial we will make a new tile index for an entire county, and use
 
 ## Getting Started
 
-To run this tutorial, we need to create a new [Conda environment] with PDAL installed.
+To run this tutorial, we need to create a new {ref}`Conda environment<download>` with PDAL installed.
 Using [Miniconda] is the easiest way to do this; download the appropriate installer
-for your device [here](https://www.anaconda.com/download/success) and follow the setup
+for your device [here](https://www.anaconda.com/download/success#miniconda) and follow the setup
 instructions.
 
 ### Environment setup
 
 1. Make a new environment. We're going to call ours "tindex"
-```
-> conda create -c conda-forge -n tindex -y
+```{code-cell}
+conda create -c conda-forge -n tindex -y
 ```
 2. Activate the environment you just created
-```
-> conda activate tindex
+```{code-cell}
+conda activate tindex
 ```
 3. Install PDAL into the environment from conda-forge.
-```
-(tindex) > conda install -c conda-forge pdal 
+```{code-cell}
+conda install -c conda-forge pdal 
 ```
 
 The data used in this tutorial is a 2019 lidar survey of Adams County,
 Wisconsin. Rather than saving the files locally, we will be fetching them
 from an S3 bucket. For the "Creating a New Index" section, download the 
-list of S3 URLs [here](https://gist.github.com/ibell13/dbde0503dbdf8d317bbc3c9ac647337a).
+list of S3 URLs [here](https://github.com/PDAL/PDAL/blob/master/test/data/tindex/files.txt).
 
-If you want to skip the creation of the tile index, scroll down to the "Merging the Index"
-section.
+If you want to skip the creation of the tile index, move to the ["Merging the Index"
+section.](#merge)
 
 ## Creating a New Index
 
@@ -71,12 +83,12 @@ implementation of the Apache Parquet format.
 wildcard characters; in this example, we grab every file ending in '.copc.laz' 
 from a folder named 'data'.
 ```
-pdal tindex create WI_Adams.gpkg --filespec "data/*.copc.laz"
+pdal tindex create WI_Adams.parquet --filespec "data/*.copc.laz"
 ```
 In our case, since we're fetching from URLs (which are non-globbable) we need
 to specify stdin with a specific list of filenames:
 ```
-pdal tindex create WI_Adams.gpkg -s < files.txt
+pdal tindex create WI_Adams.parquet -s < files.txt
 ```
 
 For each of these files, an internal filter (a version of {ref}`filters.hexbin`)
@@ -90,7 +102,7 @@ creation of these boundaries:
 --sample_size          Sample size for auto-edge length calculation in internal
                        hexbin filter (default: 5000)
 ```
-```{note}
+```{warning}
 PDAL has introduced support for parallel creation of boundaries in 
 `tindex create`, specified with the `--threads` option. Keep in mind that many 
 readers use multiple threads by default, and since we're running a reader in each
@@ -100,19 +112,19 @@ tindex boundary process, the actual number of threads in use will be
 
 This command creates a new tile index for the entire dataset.
 Copy the following into your conda shell: it might take a while to run.
-```
+```{code-cell}
 $ pdal tindex create -s --tindex "WI_Adams_2019.parquet" -f Parquet \
     --readers.copc.threads=10 --readers.copc.resolution=10 \
     --lyr_name "WI_Adams_2019" --threads=8 --edge_length=20 \
-    < files.txt
+    < curl https://raw.githubusercontent.com/PDAL/PDAL/refs/heads/master/test/data/tindex/files.txt
 ```
 ```{note}
-Since we are reading data from the cloud and running on multiple threads, the settings here could be 
-modified to speed things up depending on your machine. We're using 80 threads right now
-(8 `tindex` threads * 10 `readers.copc` threads) and a relatively coarse `readers.copc.resolution`;
-with speedy internet and a powerful CPU, increasing the tindex `--threads` option could potentially
-create the index faster. Otherwise, bandwidth constraints when fetching data from S3 will limit the actual 
-processing being done.
+In this example, We're using 80 threads (8 `tindex` threads * 10 `readers.copc` threads) and a 
+relatively coarse `readers.copc.resolution`. Most of the time in each of these threads is 
+spent waiting for the data to be fetched from S3 over the network, so we are able to use a lot of 
+them without any issues. Using this many requests for `pdal tindex create` with local data rather than
+cloud-hosted files could cause contention, since most of the threads would be doing work instead of waiting
+on i/o.
 ```
 
 ```{figure} tiled.png
@@ -121,10 +133,10 @@ processing being done.
 Viewing our completed tile index in QGIS.
 ```
 
-## Merging the Index
+## <a name="merge"></a> Merging the Index
 
-With our new tile index GeoParquet, we are going to read the indexed [COPC] files within the city limits of each town
-in the county, creating a raster model of height above ground for each.
+With our new tile index [GeoParquet], we are going to read the indexed [COPC] files within the 
+city limits of each town in the county, creating a raster model of height above ground for each.
 
 The ability to process multiple files and output a single product is one of the key advantages 
 of a tile index. Take the PDAL workshop {ref}`batch processing tutorial <workshop-batch-processing>`
@@ -140,11 +152,11 @@ before PDAL can process it. However, the concepts in this workflow can be applie
 {ref}`readers.tindex` data processing tasks with a little modification. Bash commands are provided for Unix
 users, and their Powershell equivalents for Windows.
 
-First, we make a new pipeline. After reading the point clouds referenced in the tile index
+First, we make a new {ref}`pipeline`. After reading the point clouds referenced in the tile index
 (with the same {ref}`readers.copc` options as the creation command used),
 {ref}`filters.hag_nn` creates a new height above ground dimension, which gets written to a new GeoTIFF raster
-with {ref}`writers.gdal`. You might notice that we don't supply some important options
-yet, like the boundary polygons for `readers.tindex` and the filenames for `writers.gdal`:
+using {ref}`writers.gdal`. You might notice that we don't supply some important options
+yet, like the boundary polygons for {ref}`readers.tindex` and the filenames for {ref}`writers.gdal`:
 these values are going to be substituted in when we run the `pdal pipeline` command.
 
 ```json
@@ -177,7 +189,7 @@ to the file on your machine.
 
 Once that pipeline has been saved to a new .json file, it's time to construct commands that read 
 the town boundaries and substitute their polygons into our pipeline. **We are going to use these to 
-create one long command at the end, so don't run any of them yet.** I'll try to walk you through what 
+create one long command at the end, so don't run any of them yet.** The following instructions will walk you through what 
 each part is doing, so our final product makes a little more sense.
 
 1. First, we want to get the geometry of all administrative boundaries within Adams County. This can
@@ -198,20 +210,13 @@ have a town name associated with them.
 $ ogr2ogr -sql "SELECT \"_ogr_geometry_\", \"name\" FROM \"multipolygons\" WHERE \"name\" != ''" \
     -lco GEOMETRY=AS_WKT -lco SEPARATOR=SEMICOLON -f CSV /vsistdout/ /vsistdin/
 ```
-```
-PS > ogr2ogr -sql "SELECT `"_ogr_geometry_`", `"name`" FROM `"multipolygons`" WHERE `"name`" != ''" `
-    -lco GEOMETRY=AS_WKT -lco SEPARATOR=SEMICOLON -f CSV /vsistdout/ /vsistdin/
-```
 3. Once we have the polygon geometries, the output contains a line of text listing field names at 
 the beginning, and has quotes surrounding the WKT. We need to remove these from the output before
 it gets processed.
 ```
 $ sed '1d' | tr -d '"'
 ```
-In PowerShell, we can trim the quotes out later.
-```
-PS > Select-Object -Skip 1
-```
+
 4. Now, we make a loop that splits the WKT from the name, and runs a pipeline for each line. 
 The `readers.tindex` stage adds the same `readers.copc` options our creation command used, and 
 adds the WKT polygon. Next, `filters.hag_nn` writes a 
@@ -232,8 +237,8 @@ PS > ForEach-Object { `
 ```
 
 All of these are piped together to create the fully completed command; paste it in and run it!
-```
-$ curl "https://overpass-api.de/api/interpreter?data=area%5B%22wikipedia%22%3D%22en%3AAdams+County%2C+Wisconsin%22%5D%3B%28relation%5B%22boundary%22%3D%22administrative%22%5D%5B%22admin_level%22%3D%228%22%5D%28area%29%3B%3E%3B%29%3Bout+meta%3B" \
+```{code-cell}
+curl "https://overpass-api.de/api/interpreter?data=area%5B%22wikipedia%22%3D%22en%3AAdams+County%2C+Wisconsin%22%5D%3B%28relation%5B%22boundary%22%3D%22administrative%22%5D%5B%22admin_level%22%3D%228%22%5D%28area%29%3B%3E%3B%29%3Bout+meta%3B" \
 | ogr2ogr -sql "SELECT \"_ogr_geometry_\", \"name\" FROM \"multipolygons\" WHERE \"name\" != ''" \
     -lco GEOMETRY=AS_WKT -lco SEPARATOR=SEMICOLON -f CSV /vsistdout/ /vsistdin/ \
 | sed '1d' | tr -d '"' \
@@ -241,17 +246,6 @@ $ curl "https://overpass-api.de/api/interpreter?data=area%5B%22wikipedia%22%3D%2
     --readers.tindex.wkt=$wkt \
     --writers.gdal.filename="${name// /}.tif"; \
 done;
-```
-```
-PS > curl "https://overpass-api.de/api/interpreter?data=area%5B%22wikipedia%22%3D%22en%3AAdams+County%2C+Wisconsin%22%5D%3B%28relation%5B%22boundary%22%3D%22administrative%22%5D%5B%22admin_level%22%3D%228%22%5D%28area%29%3B%3E%3B%29%3Bout+meta%3B" `
-| ogr2ogr -sql "SELECT `"_ogr_geometry_`", `"name`" FROM `"multipolygons`" WHERE `"name`" != ''" `
-    -lco GEOMETRY=AS_WKT -lco SEPARATOR=SEMICOLON -f CSV /vsistdout/ /vsistdin/ `
-| Select-Object -Skip 1 | ForEach-Object { `
-    $wkt_name=$_.split(';'); `
-    pdal pipeline ./height_model.json `
-        --readers.tindex.wkt=$($wkt_name[0].Trim('"')) `
-        --writers.gdal.filename="$($wkt_name[1].Trim()).tif" }
-
 ```
 
 ```{figure} final_output.png
