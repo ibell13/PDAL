@@ -135,3 +135,6 @@ cmake_dependent_option(BUILD_PIPELINE_TESTS
 cmake_dependent_option(BUILD_I3S_TESTS
     "Choose if I3S tests should be built"
     OFF "WITH_TESTS" OFF)
+cmake_dependent_option(BUILD_REMOTE_TESTS
+    "Choose if tests for remote filesystems should be built. Requires access to private PDAL S3 bucket."
+    OFF "BUILD_GMOCK; WITH_TESTS" OFF)
