@@ -107,7 +107,7 @@ struct GaussianCloud {
     // axis. Scales are stored on a log scale, and exp(x) * exp(y) * exp(z) = exp(x + y + z). So we
     // can sort by value = (x + y + z) and compute volume = 4/3 * pi * exp(value) later.
     std::vector<float> scaleSums;
-    for(int i = 0; i < scales.size(); i += 3) {
+    for(int i = 0; i < (int)scales.size(); i += 3) {
       float sum = scales[i] + scales[i + 1] + scales[i + 2];
       scaleSums.push_back(sum);
     }
@@ -177,8 +177,8 @@ constexpr Quat4f times(const Quat4f &a, const Quat4f &b) {
     w * qz + x * qy - y * qx + z * qw});
 }
 
-constexpr Quat4f times(const Quat4f &a, float s) { 
-  return {a[0] * s, a[1] * s, a[2] * s, a[3] * s}; 
+constexpr Quat4f times(const Quat4f &a, float s) {
+  return {a[0] * s, a[1] * s, a[2] * s, a[3] * s};
 }
 
 constexpr Quat4f plus(const Quat4f &a, const Quat4f &b) {

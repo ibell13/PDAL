@@ -106,22 +106,22 @@ bool checkSizes(const GaussianCloud &g) {
   CHECK_GE(g.numPoints, 0);
   CHECK_GE(g.shDegree, 0);
   CHECK_LE(g.shDegree, 3);
-  CHECK_EQ(g.positions.size(), g.numPoints * 3);
-  CHECK_EQ(g.scales.size(), g.numPoints * 3);
-  CHECK_EQ(g.rotations.size(), g.numPoints * 4);
-  CHECK_EQ(g.alphas.size(), g.numPoints);
-  CHECK_EQ(g.colors.size(), g.numPoints * 3);
-  CHECK_EQ(g.sh.size(), g.numPoints * dimForDegree(g.shDegree) * 3);
+  CHECK_EQ(g.positions.size(), (size_t)g.numPoints * 3);
+  CHECK_EQ(g.scales.size(), (size_t)g.numPoints * 3);
+  CHECK_EQ(g.rotations.size(), (size_t)g.numPoints * 4);
+  CHECK_EQ(g.alphas.size(), (size_t)g.numPoints);
+  CHECK_EQ(g.colors.size(), (size_t)g.numPoints * 3);
+  CHECK_EQ(g.sh.size(), (size_t)g.numPoints * dimForDegree(g.shDegree) * 3);
   return true;
 }
 
 bool checkSizes(const PackedGaussians &packed, int numPoints, int shDim, bool usesFloat16) {
-  CHECK_EQ(packed.positions.size(), numPoints * 3 * (usesFloat16 ? 2 : 3));
-  CHECK_EQ(packed.scales.size(), numPoints * 3);
-  CHECK_EQ(packed.rotations.size(), numPoints * 3);
-  CHECK_EQ(packed.alphas.size(), numPoints);
-  CHECK_EQ(packed.colors.size(), numPoints * 3);
-  CHECK_EQ(packed.sh.size(), numPoints * shDim * 3);
+  CHECK_EQ(packed.positions.size(), (size_t)numPoints * 3 * (usesFloat16 ? 2 : 3));
+  CHECK_EQ(packed.scales.size(), (size_t)numPoints * 3);
+  CHECK_EQ(packed.rotations.size(), (size_t)numPoints * 3);
+  CHECK_EQ(packed.alphas.size(), (size_t)numPoints);
+  CHECK_EQ(packed.colors.size(), (size_t)numPoints * 3);
+  CHECK_EQ(packed.sh.size(), (size_t)numPoints * shDim * 3);
   return true;
 }
 
@@ -236,18 +236,18 @@ PackedGaussians packGaussians(const GaussianCloud &g) {
 
   // Store coordinates as 24-bit fixed point values.
   const float scale = (1 << packed.fractionalBits);
-  for (size_t i = 0; i < numPoints * 3; i++) {
+  for (int i = 0; i < numPoints * 3; i++) {
     const int32_t fixed32 = static_cast<int32_t>(std::round(g.positions[i] * scale));
     packed.positions[i * 3 + 0] = fixed32 & 0xff;
     packed.positions[i * 3 + 1] = (fixed32 >> 8) & 0xff;
     packed.positions[i * 3 + 2] = (fixed32 >> 16) & 0xff;
   }
 
-  for (size_t i = 0; i < numPoints * 3; i++) {
+  for (int i = 0; i < numPoints * 3; i++) {
     packed.scales[i] = toUint8((g.scales[i] + 10.0f) * 16.0f);
   }
 
-  for (size_t i = 0; i < numPoints; i++) {
+  for (int i = 0; i < numPoints; i++) {
     // Normalize the quaternion, make w positive, then store xyz. w can be derived from xyz.
     // NOTE: These are already in xyzw order.
     Quat4f q = normalized(quat4f(&g.rotations[i * 4]));
@@ -258,12 +258,12 @@ PackedGaussians packGaussians(const GaussianCloud &g) {
     packed.rotations[i * 3 + 2] = toUint8(q[2]);
   }
 
-  for (size_t i = 0; i < numPoints; i++) {
+  for (int i = 0; i < numPoints; i++) {
     // Apply sigmoid activation to alpha
     packed.alphas[i] = toUint8(sigmoid(g.alphas[i]) * 255.0f);
   }
 
-  for (size_t i = 0; i < numPoints * 3; i++) {
+  for (int i = 0; i < numPoints * 3; i++) {
     // Convert SH DC component to wide RGB (allowing values that are a bit above 1 and below 0).
     packed.colors[i] = toUint8(g.colors[i] * (colorScale * 255.0f) + (0.5f * 255.0f));
   }
@@ -274,8 +274,8 @@ PackedGaussians packGaussians(const GaussianCloud &g) {
     constexpr int sh1Bits = 5;
     constexpr int shRestBits = 4;
     const int shPerPoint = dimForDegree(g.shDegree) * 3;
-    for (size_t i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
-      size_t j = 0;
+    for (int i = 0; i < numPoints * shPerPoint; i += shPerPoint) {
+      int j = 0;
       for (; j < 9; j++) {  // There are 9 coefficients for degree 1
         packed.sh[i + j] = quantizeSH(g.sh[i + j], 1 << (8 - sh1Bits));
       }
@@ -368,7 +368,7 @@ UnpackedGaussian PackedGaussians::unpack(int i) const {
   return at(i).unpack(usesFloat16(), fractionalBits);
 }
 
-bool PackedGaussians::usesFloat16() const { return positions.size() == numPoints * 3 * 2; }
+bool PackedGaussians::usesFloat16() const { return positions.size() == (size_t)numPoints * 3 * 2; }
 
 GaussianCloud unpackGaussians(const PackedGaussians &packed) {
   const int numPoints = packed.numPoints;
@@ -393,13 +393,13 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed) {
   if (usesFloat16) {
     // Decode legacy float16 format. We can remove this at some point as it was never released.
     const auto *halfData = reinterpret_cast<const Half *>(packed.positions.data());
-    for (size_t i = 0; i < numPoints * 3; i++) {
+    for (size_t i = 0; i < (size_t)numPoints * 3; i++) {
       result.positions[i] = halfToFloat(halfData[i]);
     }
   } else {
     // Decode 24-bit fixed point coordinates
     float scale = 1.0 / (1 << packed.fractionalBits);
-    for (size_t i = 0; i < numPoints * 3; i++) {
+    for (size_t i = 0; i < (size_t)numPoints * 3; i++) {
       int32_t fixed32 = packed.positions[i * 3 + 0];
       fixed32 |= packed.positions[i * 3 + 1] << 8;
       fixed32 |= packed.positions[i * 3 + 2] << 16;
@@ -408,11 +408,11 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed) {
     }
   }
 
-  for (size_t i = 0; i < numPoints * 3; i++) {
+  for (size_t i = 0; i < (size_t)numPoints * 3; i++) {
     result.scales[i] = packed.scales[i] / 16.0f - 10.0f;
   }
 
-  for (size_t i = 0; i < numPoints; i++) {
+  for (size_t i = 0; i < (size_t)numPoints; i++) {
     const uint8_t *r = &packed.rotations[i * 3];
     Vec3f xyz = plus(
       times(
@@ -424,11 +424,11 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed) {
     result.rotations[i * 4 + 3] = std::sqrt(std::max(0.0f, 1.0f - squaredNorm(xyz)));
   }
 
-  for (size_t i = 0; i < numPoints; i++) {
+  for (size_t i = 0; i < (size_t)numPoints; i++) {
     result.alphas[i] = invSigmoid(packed.alphas[i] / 255.0f);
   }
 
-  for (size_t i = 0; i < numPoints * 3; i++) {
+  for (size_t i = 0; i < (size_t)numPoints * 3; i++) {
     result.colors[i] = ((packed.colors[i] / 255.0f) - 0.5f) / colorScale;
   }
 
@@ -695,19 +695,19 @@ GaussianCloud loadSplatFromPly(const std::string &filename) {
   result.alphas.reserve(numPoints * 1);
   result.colors.reserve(numPoints * 3);
   for (size_t i = 0; i < values.size(); i += fields.size()) {
-    for (int j = 0; j < positionIdx.size(); j++) {
+    for (int j = 0; j < (int)positionIdx.size(); j++) {
       result.positions.push_back(values[i + positionIdx[j]]);
     }
-    for (int j = 0; j < scaleIdx.size(); j++) {
+    for (int j = 0; j < (int)scaleIdx.size(); j++) {
       result.scales.push_back(values[i + scaleIdx[j]]);
     }
-    for (int j = 0; j < rotIdx.size(); j++) {
+    for (int j = 0; j < (int)rotIdx.size(); j++) {
       result.rotations.push_back(values[i + rotIdx[j]]);
     }
-    for (int j = 0; j < alphaIdx.size(); j++) {
+    for (int j = 0; j < (int)alphaIdx.size(); j++) {
       result.alphas.push_back(values[i + alphaIdx[j]]);
     }
-    for (int j = 0; j < colorIdx.size(); j++) {
+    for (int j = 0; j < (int)colorIdx.size(); j++) {
       result.colors.push_back(values[i + colorIdx[j]]);
     }
     // Convert from [N,C,S] to [N,S,C] (where C is color channel, S is SH coeff).
@@ -722,11 +722,11 @@ GaussianCloud loadSplatFromPly(const std::string &filename) {
 
 bool saveSplatToPly(const GaussianCloud &data, const std::string &filename) {
   const int N = data.numPoints;
-  CHECK_EQ(data.positions.size(), N * 3);
-  CHECK_EQ(data.scales.size(), N * 3);
-  CHECK_EQ(data.rotations.size(), N * 4);
-  CHECK_EQ(data.alphas.size(), N);
-  CHECK_EQ(data.colors.size(), N * 3);
+  CHECK_EQ((int)data.positions.size(), N * 3);
+  CHECK_EQ((int)data.scales.size(), N * 3);
+  CHECK_EQ((int)data.rotations.size(), N * 4);
+  CHECK_EQ((int)data.alphas.size(), N);
+  CHECK_EQ((int)data.colors.size(), N * 3);
   const int shDim = static_cast<int>(data.sh.size() / N / 3);
   const int D = 17 + shDim * 3;
 
@@ -768,7 +768,7 @@ bool saveSplatToPly(const GaussianCloud &data, const std::string &filename) {
     i3 += 3;
     i4 += 4;
   }
-  CHECK_EQ(outIdx, values.size());
+  CHECK_EQ(outIdx, (int)values.size());
 
   std::ofstream out(filename, std::ios::binary);
   if (!out.good()) {
