@@ -1,5 +1,8 @@
 #pragma once
 
+#define _USE_MATH_DEFINES
+#include <math.h>
+
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -7,6 +10,7 @@
 #include <vector>
 #include <algorithm>
 #include "splat-c-types.h"
+
 
 namespace spz {
 

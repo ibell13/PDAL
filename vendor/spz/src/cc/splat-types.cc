@@ -27,7 +27,9 @@ float halfToFloat(Half h) {
 }
 
 Half floatToHalf(float f) {
-  uint32_t f32 = *reinterpret_cast<uint32_t *>(&f);
+  uint32_t f32;
+  memcpy(&f32, &f, sizeof(f32));
+//   uint32_t f32 = *reinterpret_cast<uint32_t *>(&f);
   int sign = (f32 >> 31) & 0x01;        // 1 bit   -> 1 bit
   int exponent = ((f32 >> 23) & 0xff);  // 8 bits  -> 5 bits
   int mantissa = f32 & 0x7fffff;        // 23 bits -> 10 bits
