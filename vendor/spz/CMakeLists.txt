@@ -8,10 +8,6 @@ file(GLOB SPZ_SRCS
 )
 
 PDAL_ADD_FREE_LIBRARY(${PDAL_SPZ_LIB_NAME} STATIC ${SPZ_SRCS})
-# target_link_libraries(${PDAL_SPZ_LIB_NAME} PRIVATE )
-target_include_directories(${PDAL_SPZ_LIB_NAME} PRIVATE
-    src/cc
-)
 
 set_target_properties(${PDAL_SPZ_LIB_NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
