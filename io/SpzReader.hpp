@@ -17,6 +17,7 @@ public:
 private:
     point_count_t m_numPoints;
     std::size_t m_offset;
+    std::unique_ptr<std::vector<uint8_t>> m_data;
 
     virtual void addArgs(ProgramArgs& args);
     virtual void initialize();
