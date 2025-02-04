@@ -440,12 +440,12 @@ GaussianCloud unpackGaussians(const PackedGaussians &packed) {
 }
 
 void serializePackedGaussians(const PackedGaussians &packed, std::ostream &out) {
-  PackedGaussiansHeader header = {
-    .numPoints = static_cast<uint32_t>(packed.numPoints),
-    .shDegree = static_cast<uint8_t>(packed.shDegree),
-    .fractionalBits = static_cast<uint8_t>(packed.fractionalBits),
-    .flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0),
-  };
+  PackedGaussiansHeader header;
+  header.numPoints = static_cast<uint32_t>(packed.numPoints);
+  header.shDegree = static_cast<uint8_t>(packed.shDegree);
+  header.fractionalBits = static_cast<uint8_t>(packed.fractionalBits);
+  header.flags = static_cast<uint8_t>(packed.antialiased ? FlagAntialiased : 0);
+
   out.write(reinterpret_cast<const char *>(&header), sizeof(header));
   out.write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
   out.write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
