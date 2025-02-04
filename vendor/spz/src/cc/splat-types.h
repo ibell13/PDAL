@@ -5,6 +5,7 @@
 #include <cstring>
 #include <cstdint>
 #include <vector>
+#include <algorithm>
 #include "splat-c-types.h"
 
 namespace spz {
