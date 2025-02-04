@@ -35,6 +35,8 @@ void SpzReader::initialize()
     stream.seek(0, std::ios::beg);
     stream.get(reinterpret_cast<char *>(m_data->data()), m_data->size());
     stream.close();
+    if (!stream.good())
+        throwError("Unable to load data from '" + m_filename + "'");
     spz::loadSpz(*m_data.get());
 }
 
