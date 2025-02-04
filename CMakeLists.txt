@@ -117,6 +117,7 @@ include(${PDAL_CMAKE_DIR}/schema-validator.cmake)
 include(${PDAL_CMAKE_DIR}/lazperf.cmake)
 include(${PDAL_CMAKE_DIR}/gcs.cmake) # Optional
 include(${PDAL_CMAKE_DIR}/utfcpp.cmake)
+include(${PDAL_CMAKE_DIR}/spz.cmake)
 
 #------------------------------------------------------------------------------
 # generate the pdal_features.hpp header
