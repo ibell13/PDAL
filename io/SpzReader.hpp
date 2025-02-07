@@ -5,6 +5,10 @@
 #include <pdal/Dimension.hpp>
 #include <pdal/Streamable.hpp>
 
+namespace spz
+{
+    struct PackedGaussians;
+}
 namespace pdal
 {
 
@@ -16,8 +20,14 @@ public:
     std::string getName() const;
 private:
     point_count_t m_numPoints;
-    std::size_t m_offset;
-    std::unique_ptr<std::vector<uint8_t>> m_data;
+    point_count_t m_index;
+    //std::size_t m_offset;
+    int m_numSh;
+    float m_fractionalScale;
+    Dimension::IdList m_shDims;
+    //GaussianCloudData m_headerData;
+    //std::unique_ptr<std::vector<uint8_t>> m_data;
+    std::unique_ptr<spz::PackedGaussians> m_data;
 
     virtual void addArgs(ProgramArgs& args);
     virtual void initialize();
@@ -27,7 +37,8 @@ private:
     virtual void done(PointTableRef table);
     virtual bool processOne(PointRef& point);
 
-    void extractHeader();
+    void extractHeaderData();
+    float extractPositions(size_t pos);
 };
 
 } // namespace pdal
