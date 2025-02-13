@@ -26,14 +26,11 @@ SpzReader::SpzReader()
 void SpzReader::addArgs(ProgramArgs& args)
 {}
 
-// this function would make more sense if we don't already load the entire cloud in initialize
 void SpzReader::extractHeaderData()
 {
     m_numPoints = m_data->numPoints;
-    std::cout << "num points: " << m_numPoints << '\n';
-    std::cout << "x size: " << m_data->positions.size();
-
     m_fractionalScale = 1.0 / (1 << m_data->fractionalBits);
+
     switch (m_data->shDegree)
     {
         case 0:
@@ -64,6 +61,7 @@ void SpzReader::initialize()
     m_data.reset(new spz::PackedGaussians(spz::loadSpzPacked(data)));
     if (m_data->usesFloat16())
         throwError("SPZ float16 point encoding not supported!");
+
     extractHeaderData();
 }
 
@@ -74,28 +72,23 @@ void SpzReader::addDimensions(PointLayoutPtr layout)
     layout->registerDim(Id::X);
     layout->registerDim(Id::Y);
     layout->registerDim(Id::Z);
-    // scales will get applied when we add points (?)
-    //!!add rotations
     layout->registerDim(Id::Alpha);
     layout->registerDim(Id::Red);
     layout->registerDim(Id::Green);
     layout->registerDim(Id::Blue);
 
-    std::string prefix = "sh" + std::to_string(m_data->shDegree) + "_";
-    int counter{};
-    for (int i = 0; i < m_numSh; i += 3)
-    {
-        Id id = layout->registerOrAssignDim(prefix + std::to_string(counter) + "_r",
-            Type::Float);
-        m_shDims.push_back(id);
-        id = layout->registerOrAssignDim(prefix + std::to_string(counter) + "_g",
-            Type::Float);
-        m_shDims.push_back(id);
-        id = layout->registerOrAssignDim(prefix + std::to_string(counter) + "_b",
-            Type::Float);
-        m_shDims.push_back(id);
-        counter++;
-    }
+    // scale/rotation/SH dimensions set with PLY naming conventions
+    for (int i = 0; i < 3; ++i)
+        m_scaleDims.push_back(layout->assignDim("scale_" + std::to_string(i),
+            Type::Float));
+
+    for (int i = 0; i < 4; ++i)
+        m_rotDims.push_back(layout->assignDim("rot_" + std::to_string(i),
+            Type::Float));
+
+    for (int i = 0; i < m_numSh; ++i)
+        m_shDims.push_back(layout->registerOrAssignDim("f_rest_" + std::to_string(i),
+            Type::Float));
 }
 
 void SpzReader::ready(PointTableRef table)
@@ -103,14 +96,24 @@ void SpzReader::ready(PointTableRef table)
     m_index = 0;
 }
 
-float SpzReader::extractPositions(size_t pos)
+// each X/Y/Z position gets extracted from a triplet
+double SpzReader::extractPositions(size_t pos)
 {
-    // each X/Y/Z position gets extracted from a triplet
     int32_t fixed = m_data->positions[pos];
     fixed |= m_data->positions[pos + 1] << 8;
     fixed |= m_data->positions[pos + 2] << 16;
     fixed |= (fixed & 0x800000) ? 0xff000000 : 0;
-    return static_cast<float>(fixed) * m_fractionalScale;
+    return static_cast<double>(fixed) * m_fractionalScale;
+}
+
+float SpzReader::unpackSh(size_t pos)
+{
+    return (static_cast<float>(m_data->sh[pos]) - 128.0f) / 128.0f;
+}
+
+float SpzReader::unpackScale(size_t pos)
+{
+    return m_data->scales[pos] / 16.0f - 10.0f;
 }
 
 point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
@@ -118,11 +121,12 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
     PointId idx = view->size();
 
     count = (std::min)(m_numPoints - m_index, count);
+    //!! this needs to get set differently, or I need to use m_index in the loop instead
     point_count_t numRead = 0;
     PointRef point = PointRef(*view, 0);
     while (numRead < count)
     {
-        size_t start3 = numRead * 3;       
+        size_t start3 = numRead * 3;
         size_t xPos = start3 * 3;
 
         view->setField(Dimension::Id::X, idx, extractPositions(xPos));
@@ -132,10 +136,30 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
         view->setField(Dimension::Id::Red, idx, m_data->colors[start3]);
         view->setField(Dimension::Id::Green, idx, m_data->colors[start3 + 1]);
         view->setField(Dimension::Id::Blue, idx, m_data->colors[start3 + 2]);
-        for (int i = 0; i < m_numSh; ++i)
+
+        // rotation - xyz
+        std::vector<float> xyzSquared;
+        for (int i = 0; i < 3; ++i)
         {
-            view->setField(m_shDims[i], idx, m_data->sh[numRead + i]);
+            float rotation = (m_data->rotations[start3 + i] / 127.5f) - 1;
+            view->setField(m_rotDims[i], idx, rotation);
+            xyzSquared.push_back(rotation * rotation);
         }
+        // rotation - w
+        //!! keep this?
+        float squaredNorm = xyzSquared[0] + xyzSquared[1] + xyzSquared[2];
+        view->setField(m_rotDims[3], idx,
+            std::sqrt(std::max(0.0f, 1.0f - squaredNorm)));
+
+        // scale
+        for (int i = 0; i < 3; ++i)
+            view->setField(m_scaleDims[i], idx, unpackScale(start3 + i));
+
+        // spherical harmonics
+        size_t shPos = numRead * m_numSh;
+        for (int i = 0; i < m_numSh; ++i)
+            view->setField(m_shDims[i], idx, unpackSh(shPos + i));
+
         numRead++;
         idx++;
     }
@@ -146,10 +170,5 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
 
 void SpzReader::done(PointTableRef table)
 {}
-
-bool SpzReader::processOne(PointRef& point)
-{
-    return false;
-}
 
 } // namespace pdal

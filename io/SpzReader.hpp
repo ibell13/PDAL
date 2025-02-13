@@ -3,7 +3,6 @@
 
 #include <pdal/Reader.hpp>
 #include <pdal/Dimension.hpp>
-#include <pdal/Streamable.hpp>
 
 namespace spz
 {
@@ -12,7 +11,7 @@ namespace spz
 namespace pdal
 {
 
-class PDAL_EXPORT SpzReader : public Reader, public Streamable
+class PDAL_EXPORT SpzReader : public Reader
 {
 public:
     SpzReader();
@@ -21,12 +20,12 @@ public:
 private:
     point_count_t m_numPoints;
     point_count_t m_index;
-    //std::size_t m_offset;
     int m_numSh;
     float m_fractionalScale;
+    //!! put these in a struct or something?
     Dimension::IdList m_shDims;
-    //GaussianCloudData m_headerData;
-    //std::unique_ptr<std::vector<uint8_t>> m_data;
+    Dimension::IdList m_rotDims;
+    Dimension::IdList m_scaleDims;
     std::unique_ptr<spz::PackedGaussians> m_data;
 
     virtual void addArgs(ProgramArgs& args);
@@ -35,10 +34,11 @@ private:
     virtual void ready(PointTableRef table);
     virtual point_count_t read(PointViewPtr view, point_count_t num);
     virtual void done(PointTableRef table);
-    virtual bool processOne(PointRef& point);
 
     void extractHeaderData();
-    float extractPositions(size_t pos);
+    double extractPositions(size_t pos);
+    float unpackSh(size_t pos);
+    float unpackScale(size_t pos);
 };
 
 } // namespace pdal
