@@ -18,28 +18,24 @@ static StaticPluginInfo const s_info
 
 CREATE_STATIC_STAGE(SpzWriter, s_info)
 
+SpzWriter::SpzWriter() : m_cloud(new spz::GaussianCloud)
+{}
+
 std::string SpzWriter::getName() const { return s_info.name; }
 
 void SpzWriter::addArgs(ProgramArgs& args)
 {
-    // maybe add fractional bits or antialiased options?
+    args.add("antialiased", "Mark the data as antialiased", m_antialiased);
 }
 
 void SpzWriter::initialize()
 {
     // add remote file stuff, maybe?
-
-    // need to reset these for each point table, I think?
-    //there's probably a better way
-    m_shDims = {};
-    m_scaleDims = {};
-    m_rotDims = {};
 }
 
 void SpzWriter::checkDimensions(PointLayoutPtr layout)
 {
     m_dims = layout->dimTypes();
-    //std::sort(m_dims.begin(), m_dims.end());
     for (const auto& dim : m_dims)
     {
         // looking for our spz-specific dims.
@@ -54,20 +50,24 @@ void SpzWriter::checkDimensions(PointLayoutPtr layout)
         else if (Utils::startsWith(dimName, "rot_"))
             m_rotDims.push_back(dim.m_id);
     }
-    //!! allow more leeway here?
+
     switch (m_shDims.size())
     {
         case 0:
             m_shDegree = 0;
+            break;
         case 9:
             m_shDegree = 1;
+            break;
         case 24:
             m_shDegree = 2;
+            break;
         case 45:
             m_shDegree = 3;
+            break;
         default:
             log()->get(LogLevel::Warning) << "Invalid spherical harmonics dimensions " <<
-                "for '" << Writer::filename() << "': expected 0, 9, 24 or 45 dimensions " <<
+                "for '" << filename() << "': expected 0, 9, 24 or 45 dimensions " <<
                 "labeled 'f_rest_*': found " << m_shDims.size() << std::endl;
             m_shDims.clear();
             m_shDegree = 0;
@@ -76,153 +76,107 @@ void SpzWriter::checkDimensions(PointLayoutPtr layout)
 
 void SpzWriter::prepared(PointTableRef table)
 {
-    FlexWriter::validateFilename(table);
-
     checkDimensions(table.layout());
 }
 
-//!! took these from PlyReader. Maybe should touch them up
-void SpzWriter::readyTable(PointTableRef table)
+//!! maybe put this into a lambda in write()?
+float SpzWriter::tryGetDim(const PointRef& point, Dimension::Id id)
 {
-    m_layout = table.layout();
+    float f;
+    try
+    {
+        f = point.getFieldAs<float>(id);
+    }
+    catch(std::exception&)
+    {
+        return 0.0f;
+    }
+
+    return f;
 }
 
-void SpzWriter::doneTable(PointTableRef table)
+float unpackRgb(const PointRef& point, Dimension::Id id)
 {
-    m_layout = nullptr;
+    try
+    {
+        
+    }
+    catch(std::exception&)
+    {
+        return 0;
+    }
+    
+    return ((point.getFieldAs<uint8_t>(id) / 255.0f) - 0.5f) / 0.15f;
 }
 
-void SpzWriter::readyFile(const std::string& filename, const SpatialReference& srs)
+float unpackAlpha(uint8_t alpha)
 {
-    m_curFilename = filename;
-    Utils::writeProgress(m_progressFd, "READYFILE", filename);
-}
-
-void SpzWriter::writePoint(spz::PackedGaussians& cloud)
-{}
-
-// copied from spz lib
-uint8_t toUint8(float x)
-{
-    return static_cast<uint8_t>(std::clamp(std::round(x), 0.0f, 255.0f));
-}
-
-uint8_t quantizeSH(float x, int bucketSize)
-{
-    int q = static_cast<int>(std::round(x * 128.0f) + 128.0f);
-    q = (q + bucketSize / 2) / bucketSize * bucketSize;
-    return static_cast<uint8_t>(std::clamp(q, 0, 255));
-}
-
-size_t countBytes(std::vector<uint8_t> vec)
-{
-    return vec.size() * sizeof(vec[0]);
-}
-
-int32_t SpzWriter::castPosition(float xyz)
-{
-    return static_cast<int32_t>(std::round(xyz * m_fractionalScale));
-}
-
-void SpzWriter::assignPositions(spz::PackedGaussians& cloud, int32_t point, size_t pos)
-{
-    cloud.positions[pos] = point & 0xff;
-    cloud.positions[pos + 1] = (point >> 8) & 0xff;
-    cloud.positions[pos + 2] = (point >> 16) & 0xff;
+    return std::log((alpha / 255.0f) / (1 - (alpha / 255.0f)));
 }
 
 //!! messy
-void SpzWriter::writeView(const PointViewPtr data)
+void SpzWriter::write(const PointViewPtr data)
 {
     point_count_t pointCount = data->size();
     //!! do some check for the max size of file here? pointCount * ~64?
 
-    //!! if this is a GaussianCloud we can use the spz saveSPZ() for writing,
-    //which might be helpful - don't have to worry about any Zlib/Gzip stuff.
-    //but saveSPZ() converts everything back to PackedGaussians, maybe losing
-    //data in the conversion from RGB/Alpha int->float->int. 
-    spz::PackedGaussians packed;
     //!! from spz lib
-    packed.positions.resize(pointCount * 9);
-    packed.scales.resize(pointCount * 3);
-    packed.rotations.resize(pointCount * 3);
-    packed.alphas.resize(pointCount);
-    packed.colors.resize(pointCount * 3);
-    packed.sh.resize(pointCount * m_shDims.size() * 3);
+    m_cloud->positions.resize(pointCount * 3);
+    m_cloud->scales.resize(pointCount * 3);
+    m_cloud->rotations.resize(pointCount * 4);
+    m_cloud->alphas.resize(pointCount);
+    m_cloud->colors.resize(pointCount * 3);
+    m_cloud->sh.resize(pointCount * m_shDims.size());
 
-    m_fractionalScale = (1 << m_fractionalBits);
     PointRef point(*data, 0);
-    //!! put more of this loop inside functions - everything that extracts a dimension
-    //should have a default value to write if the dimension isn't present.
-    //!! probably possible to put dimensions directly into the stream, but the ordering
-    //needs each full dim to be extracted from the PointView individually (see load-spz.cc:442)
     for (PointId idx = 0; idx < pointCount; ++idx)
     {
         point.setPointId(idx);
         size_t start3 = idx * 3;
-        size_t xPos = start3 * 3;
 
-        //!! combine these.
-        assignPositions(packed, castPosition(point.getFieldAs<float>(Dimension::Id::X)), xPos);
-        assignPositions(packed, castPosition(point.getFieldAs<float>(Dimension::Id::Y)), xPos + 3);
-        assignPositions(packed, castPosition(point.getFieldAs<float>(Dimension::Id::Z)), xPos + 6);
+        //!! combine these?
+        m_cloud->positions[start3] = point.getFieldAs<float>(Dimension::Id::X);
+        m_cloud->positions[start3 + 1] = point.getFieldAs<float>(Dimension::Id::Y);
+        m_cloud->positions[start3 + 2] = point.getFieldAs<float>(Dimension::Id::Z);
 
-        //!! this is assuming we have the correct scale & rotation dimensions. need to verify earlier
+        //!! this is assuming we have the correct order of scale & rotation dimensions. need to verify earlier
         for (int i = 0; i < 3; ++i)
         {
-            packed.scales[start3 + i] = toUint8((point.getFieldAs<float>(m_scaleDims[i]) + 10.0f) * 16.0f);
-            //!! spz lib does a lot more normalization of the rotations when packing.
-            //I probably need to also, but I'm leaving it like this for now.
-            packed.rotations[start3 + i] = toUint8(127.5f * (point.getFieldAs<float>(m_scaleDims[i]) + 1.0f));
+            m_cloud->scales[start3 + i] = tryGetDim(point, m_scaleDims[i]);
+        }
+        //!! could have 3 or 4 rotation dimensions (if W is included or not). Figure out what happens if not
+        size_t start4 = idx * 4;
+        for (int i = 0; i < 4; ++i)
+        {
+            m_cloud->rotations[start4 + i] = tryGetDim(point, m_rotDims[i]);
         }
         //!! again, this is assuming RGB & alpha are present. fix.
-        //!! maybe to take into account PLY RGB dimensions ('f_dc_*' & 'opacity')
-        packed.alphas[size_t(idx)] = point.getFieldAs<uint8_t>(Dimension::Id::Alpha);
-        packed.colors[start3] = point.getFieldAs<uint8_t>(Dimension::Id::Red);
-        packed.colors[start3 + 1] = point.getFieldAs<uint8_t>(Dimension::Id::Green);
-        packed.colors[start3 + 2] = point.getFieldAs<uint8_t>(Dimension::Id::Blue);
+        //!! maybe to take into account PLY RGB dimensions ('f_dc_*' & 'opacity') - these could be float
+        //and wouldn't need to be unpacked from int.
+        //!! converting from int -> float -> int, bad (for alpha especially)
+        m_cloud->alphas[size_t(idx)] = unpackAlpha(point.getFieldAs<uint8_t>(Dimension::Id::Alpha));
+        m_cloud->colors[start3] = unpackRgb(point, Dimension::Id::Red);
+        m_cloud->colors[start3 + 1] = unpackRgb(point, Dimension::Id::Green);
+        m_cloud->colors[start3 + 2] = unpackRgb(point, Dimension::Id::Blue);
 
         if (m_shDegree)
         {
-            // from spz library
-            constexpr int sh1Bits = 5;
-            constexpr int shRestBits = 4;
-            size_t j = m_shDims.size();
-            size_t shPos = idx * j;
-            // we can always assume at least 9 SH values (degree 1)
-            for (; j < 9; j++) 
+            size_t shPos = idx * m_shDims.size();
+            for (size_t i = 0; i < m_shDims.size(); i++) 
             {
-                packed.sh[shPos + j] = quantizeSH(point.getFieldAs<float>(m_shDims[j]),
-                                        1 << (8 - sh1Bits));
-            }
-            for (; j < m_shDims.size(); j++) 
-            {
-                packed.sh[shPos + j] = quantizeSH(point.getFieldAs<float>(m_shDims[j]),
-                                        1 << (8 - shRestBits));
+                m_cloud->sh[shPos + i] = tryGetDim(point, m_shDims[i]);
             }
         }
     }
-    spz::PackedGaussiansHeader header;
-    header.numPoints = static_cast<uint32_t>(pointCount);
-    header.shDegree = static_cast<uint8_t>(m_shDegree);
-    header.fractionalBits = static_cast<uint8_t>(m_fractionalBits);
-    //!! we don't set the antialiased flag in the header. Think about how to deal with it
-
-    m_stream->write(reinterpret_cast<const char *>(&header), sizeof(header));
-    m_stream->write(reinterpret_cast<const char *>(packed.positions.data()), countBytes(packed.positions));
-    m_stream->write(reinterpret_cast<const char *>(packed.alphas.data()), countBytes(packed.alphas));
-    m_stream->write(reinterpret_cast<const char *>(packed.colors.data()), countBytes(packed.colors));
-    m_stream->write(reinterpret_cast<const char *>(packed.scales.data()), countBytes(packed.scales));
-    m_stream->write(reinterpret_cast<const char *>(packed.rotations.data()), countBytes(packed.rotations));
-    m_stream->write(reinterpret_cast<const char *>(packed.sh.data()), countBytes(packed.sh));
-    //!! multiple file outputs could have different header info. Have something to check against,
-    //maybe in doneFile? Or give up on FlexWriter?
+    m_cloud->numPoints = pointCount;
+    m_cloud->shDegree = m_shDegree;
+    m_cloud->antialiased = m_antialiased;
 }
 
-//!! PlyWriter writes everything here. Not sure if I should too
-void SpzWriter::doneFile()
+void SpzWriter::done(PointTableRef table)
 {
-
+    //!! use method that writes to binary instead
+    spz::saveSpz(*m_cloud.get(), filename());
 }
 
 } // namespace pdal

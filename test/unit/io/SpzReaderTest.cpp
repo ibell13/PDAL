@@ -29,4 +29,6 @@ TEST(SpzReaderTest, test1)
     ASSERT_TRUE(table.layout()->hasDim(Dimension::Id::Red));
     ASSERT_TRUE(table.layout()->hasDim(Dimension::Id::Alpha));
     //check custom dimensions too
+    Dimension::Id rot0 = table.layout()->findProprietaryDim("rot_0");
+    ASSERT_TRUE(table.layout()->hasDim(rot0));
 }

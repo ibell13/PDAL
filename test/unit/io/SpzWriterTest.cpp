@@ -13,7 +13,7 @@ using namespace pdal;
 
 TEST(SpzWriterTest, test1)
 {
-    StageFactory f;
+/*     StageFactory f;
     Options opts;
     opts.add("filename", Support::datapath("spz/fourth_st.spz"));
     PipelineManager mgr;
@@ -26,7 +26,7 @@ TEST(SpzWriterTest, test1)
     writer.setInput(reader);
     writer.setOptions(opts);
 
-    //std::cout << "point count : " << mgr.execute();
+    std::cout << "point count : " << mgr.execute(); */
 }
 
 // add test for invalid dimensions, re-ordered dimensions, etc

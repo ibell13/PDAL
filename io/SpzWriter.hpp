@@ -2,62 +2,55 @@
 #pragma once
 
 #include <pdal/PointView.hpp>
-#include <pdal/FlexWriter.hpp>
+#include <pdal/Writer.hpp>
 
 namespace spz
 {
-    struct PackedGaussians;
-
-    // from spz lib. Maybe just expose this in their header
-    struct PackedGaussiansHeader 
-    {
-        uint32_t magic = 0x5053474e;  // NGSP = Niantic gaussian splat
-        uint32_t version = 2;
-        uint32_t numPoints = 0;
-        uint8_t shDegree = 0;
-        uint8_t fractionalBits = 0;
-        uint8_t flags = 0;
-        uint8_t reserved = 0;
-    };
+    struct GaussianCloud;
 }
 
 namespace pdal
 {
 
-//!! base writer or flexwriter?
-class PDAL_EXPORT SpzWriter : public FlexWriter
+/* struct SpzDimensions
+{
+    Dimension::IdList shDims;
+    Dimension::IdList rotDims;
+    Dimension::IdList scaleDims;
+    Dimension::IdList colorDims;
+    Dimension::Id opacity;
+};
+ */
+class PDAL_EXPORT SpzWriter : public Writer
 {
 public:
     // spz lib always uses 12 fractional bits currently
-    SpzWriter() : m_fractionalBits(12)
-    {}
+    SpzWriter();
     std::string getName() const;
 
 private:
     virtual void addArgs(ProgramArgs& args);
     virtual void initialize();
     virtual void prepared(PointTableRef table);
-    virtual void readyTable(PointTableRef table);
-    virtual void doneTable(PointTableRef table);
-    virtual void readyFile(const std::string& filename, const SpatialReference& srs);
-    virtual void writeView(const PointViewPtr data);
-    virtual void doneFile();
+    //virtual void readyFile(const std::string& filename, const SpatialReference& srs);
+    virtual void write(const PointViewPtr view);
+    virtual void done(PointTableRef table);
 
     void checkDimensions(PointLayoutPtr layout);
-    void writePoint(spz::PackedGaussians& gaussians);
-    int32_t castPosition(float xyz);
-    void assignPositions(spz::PackedGaussians& cloud, int32_t point, size_t pos);
+    float tryGetDim(const PointRef& point, Dimension::Id id);
+    void writeRgb(const PointRef& point, size_t pos);
 
+    bool m_antialiased;
     //!! OLeStream?
     std::ostream *m_stream;
     DimTypeList m_dims;
-    //spz::PackedGaussiansHeader m_header;
+    std::unique_ptr<spz::GaussianCloud> m_cloud;
     //!! again, maybe keep these grouped together
     Dimension::IdList m_shDims;
     Dimension::IdList m_rotDims;
     Dimension::IdList m_scaleDims;
+    //Dimension::IdList m_colorDims;
     int m_shDegree;
-    int m_fractionalBits;
     float m_fractionalScale;
     std::vector<PointViewPtr> m_views;
     PointLayoutPtr m_layout;
