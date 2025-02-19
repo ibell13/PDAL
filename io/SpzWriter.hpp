@@ -37,8 +37,6 @@ private:
     virtual void done(PointTableRef table);
 
     void checkDimensions(PointLayoutPtr layout);
-    float tryGetDim(const PointRef& point, Dimension::Id id);
-    void writeRgb(const PointRef& point, size_t pos);
 
     bool m_antialiased;
     //!! OLeStream?
@@ -51,7 +49,6 @@ private:
     Dimension::IdList m_scaleDims;
     //Dimension::IdList m_colorDims;
     int m_shDegree;
-    float m_fractionalScale;
     std::vector<PointViewPtr> m_views;
     PointLayoutPtr m_layout;
     std::string m_curFilename;

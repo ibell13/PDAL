@@ -3,6 +3,7 @@
 
 #include <pdal/util/OStream.hpp>
 
+#include <arbiter/arbiter.hpp>
 #include <spz/src/cc/load-spz.h>
 
 namespace pdal
@@ -30,7 +31,7 @@ void SpzWriter::addArgs(ProgramArgs& args)
 
 void SpzWriter::initialize()
 {
-    // add remote file stuff, maybe?
+    // could do a check for remote files here, don't think I need to
 }
 
 void SpzWriter::checkDimensions(PointLayoutPtr layout)
@@ -80,7 +81,7 @@ void SpzWriter::prepared(PointTableRef table)
 }
 
 //!! maybe put this into a lambda in write()?
-float SpzWriter::tryGetDim(const PointRef& point, Dimension::Id id)
+float tryGetDim(const PointRef& point, Dimension::Id id)
 {
     float f;
     try
@@ -95,21 +96,12 @@ float SpzWriter::tryGetDim(const PointRef& point, Dimension::Id id)
     return f;
 }
 
-float unpackRgb(const PointRef& point, Dimension::Id id)
+float unpackRgb(float rgb)
 {
-    try
-    {
-        
-    }
-    catch(std::exception&)
-    {
-        return 0;
-    }
-    
-    return ((point.getFieldAs<uint8_t>(id) / 255.0f) - 0.5f) / 0.15f;
+    return ((rgb / 255.0f) - 0.5f) / 0.15f;
 }
 
-float unpackAlpha(uint8_t alpha)
+float unpackAlpha(float alpha)
 {
     return std::log((alpha / 255.0f) / (1 - (alpha / 255.0f)));
 }
@@ -154,10 +146,12 @@ void SpzWriter::write(const PointViewPtr data)
         //!! maybe to take into account PLY RGB dimensions ('f_dc_*' & 'opacity') - these could be float
         //and wouldn't need to be unpacked from int.
         //!! converting from int -> float -> int, bad (for alpha especially)
-        m_cloud->alphas[size_t(idx)] = unpackAlpha(point.getFieldAs<uint8_t>(Dimension::Id::Alpha));
-        m_cloud->colors[start3] = unpackRgb(point, Dimension::Id::Red);
-        m_cloud->colors[start3 + 1] = unpackRgb(point, Dimension::Id::Green);
-        m_cloud->colors[start3 + 2] = unpackRgb(point, Dimension::Id::Blue);
+        //!! using the tryGetDim method is casting all of these to floats before they get unpacked,
+        //and still doing math on them if it returns 0. Probably not ideal
+        m_cloud->alphas[size_t(idx)] = unpackAlpha(tryGetDim(point, Dimension::Id::Alpha));
+        m_cloud->colors[start3] = unpackRgb(tryGetDim(point, Dimension::Id::Red));
+        m_cloud->colors[start3 + 1] = unpackRgb(tryGetDim(point, Dimension::Id::Green));
+        m_cloud->colors[start3 + 2] = unpackRgb(tryGetDim(point, Dimension::Id::Blue));
 
         if (m_shDegree)
         {
@@ -175,8 +169,12 @@ void SpzWriter::write(const PointViewPtr data)
 
 void SpzWriter::done(PointTableRef table)
 {
-    //!! use method that writes to binary instead
-    spz::saveSpz(*m_cloud.get(), filename());
+    std::vector<char> data;
+    spz::saveSpz(*m_cloud.get(), &data);
+
+    // arbiter can write to local too, might as well just use it for everything
+    arbiter::Arbiter a;
+    a.put(filename(), data);
 }
 
 } // namespace pdal

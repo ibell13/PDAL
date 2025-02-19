@@ -3,6 +3,7 @@
 
 #include "Support.hpp"
 
+#include <io/BufferReader.hpp>
 #include <pdal/StageFactory.hpp>
 #include <pdal/PipelineManager.hpp>
 
@@ -11,22 +12,40 @@
 
 using namespace pdal;
 
-TEST(SpzWriterTest, test1)
+PointViewPtr setXYZ(PointTableRef table)
 {
-/*     StageFactory f;
-    Options opts;
-    opts.add("filename", Support::datapath("spz/fourth_st.spz"));
-    PipelineManager mgr;
-    
-    Stage& reader = mgr.addReader("readers.spz");
-    reader.setOptions(opts);
+    table->layout()->registerDims(Dimension::Id::X);
+    table->layout()->registerDims(Dimension::Id::Y);
+    table->layout()->registerDims(Dimension::Id::Z);
 
-    Stage& writer = mgr.addWriter("writers.spz");
+    PointViewPtr v(new PointView(table));
+    v->setField(Dimension::Id::X, 0, 1);
+    v->setField(Dimension::Id::Y, 0, 1);
+    v->setField(Dimension::Id::Z, 0, 0);
+
+    v->setField(Dimension::Id::X, 1, 2);
+    v->setField(Dimension::Id::Y, 1, 1);
+    v->setField(Dimension::Id::Z, 1, 0);
+
+    v->setField(Dimension::Id::X, 2, 1);
+    v->setField(Dimension::Id::Y, 2, 2);
+    v->setField(Dimension::Id::Z, 2, 0);
+
+    return v;
+}
+
+TEST(SpzWriterTest, all_dimensions_test)
+{
+    
+
+    BufferReader r;
+
+    SpzWriter writer;
     opts.replace("filename", Support::datapath("test.spz"));
     writer.setInput(reader);
     writer.setOptions(opts);
 
-    std::cout << "point count : " << mgr.execute(); */
+    std::cout << "point count : " << mgr.execute();
 }
 
 // add test for invalid dimensions, re-ordered dimensions, etc
