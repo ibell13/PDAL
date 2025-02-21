@@ -5,7 +5,6 @@
 #include <pdal/util/IStream.hpp>
 
 #include <arbiter/arbiter.hpp>
-#include <spz/src/cc/load-spz.h>
 
 namespace pdal
 {

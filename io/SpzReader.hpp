@@ -4,10 +4,8 @@
 #include <pdal/Reader.hpp>
 #include <pdal/Dimension.hpp>
 
-namespace spz
-{
-    struct PackedGaussians;
-}
+#include <spz/src/cc/load-spz.h>
+
 namespace pdal
 {
 
