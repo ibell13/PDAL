@@ -1,9 +1,10 @@
 (readers.spz)=
 
-# writers.spz
+# readers.spz
 
 The **SPZ reader** reads points in the [spz] format, designed for
-storing compressed [gaussian splat] data. 
+storing compressed [3D gaussian splat] data. The format stores compressed
+points, with their associated scale, rotation, color and spherical harmonics.
 
 ```{eval-rst}
 .. embed::
@@ -34,4 +35,4 @@ filename
 ```
 
 [spz]: https://github.com/nianticlabs/spz
-[gaussian splat]:
+[3D gaussian splat]: https://en.wikipedia.org/wiki/Gaussian_splatting#3D_Gaussian_splatting

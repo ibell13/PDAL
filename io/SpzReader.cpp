@@ -152,8 +152,7 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
         }
         // rotation - w
         float squaredNorm = xyzSquared[0] + xyzSquared[1] + xyzSquared[2];
-        view->setField(m_rotDims[3], idx,
-            std::sqrt(std::max(0.0f, 1.0f - squaredNorm)));
+        view->setField(m_rotDims[3], idx, std::sqrt(std::max(0.0f, 1.0f - squaredNorm)));
 
         // scale
         for (int i = 0; i < 3; ++i)

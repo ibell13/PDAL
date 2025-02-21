@@ -177,7 +177,7 @@ void SpzWriter::write(const PointViewPtr data)
             }
         }
     }
-    m_cloud->numPoints = pointCount;
+    m_cloud->numPoints = int(pointCount);
     m_cloud->shDegree = m_shDegree;
     m_cloud->antialiased = m_antialiased;
 }

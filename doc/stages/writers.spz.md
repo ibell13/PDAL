@@ -3,10 +3,12 @@
 # writers.spz
 
 The **SPZ writer** writes files in the [spz] format, designed for
-storing compressed [gaussian splat] data.
+storing compressed [gaussian splat] data. The format stores compressed
+points, with their associated scale, rotation, color and spherical harmonics.
 
 ```{note}
-
+If scale, rotation, color, or opacity dimensions aren't found in the point
+input, zeroes will be written for these attributes in the output file.
 ```
 
 ```{eval-rst}
@@ -44,4 +46,4 @@ antialiased
 ```
 
 [spz]: https://github.com/nianticlabs/spz
-[gaussian splat]:
+[gaussian splat]: https://en.wikipedia.org/wiki/Gaussian_splatting#3D_Gaussian_splatting
