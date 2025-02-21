@@ -13,7 +13,7 @@ static StaticPluginInfo const s_info
 {
     "readers.spz",
     "SPZ Reader",
-    "http://pdal.io/stages/",
+    "http://pdal.io/stages/readers.spz.html",
     { "spz" }
 };
 
@@ -35,12 +35,16 @@ void SpzReader::extractHeaderData()
     {
         case 0:
             m_numSh = 0;
+            break;
         case 1:
             m_numSh = 9;
+            break;
         case 2:
             m_numSh = 24;
+            break;
         case 3:
             m_numSh = 45;
+            break;
     }
 }
 
@@ -87,7 +91,7 @@ void SpzReader::addDimensions(PointLayoutPtr layout)
             Type::Float));
 
     for (int i = 0; i < m_numSh; ++i)
-        m_shDims.push_back(layout->registerOrAssignDim("f_rest_" + std::to_string(i),
+        m_shDims.push_back(layout->assignDim("f_rest_" + std::to_string(i),
             Type::Float));
 }
 
@@ -99,11 +103,12 @@ void SpzReader::ready(PointTableRef table)
 // each X/Y/Z position gets extracted from a triplet
 double SpzReader::extractPositions(size_t pos)
 {
+    // Decode 24-bit fixed point coordinates
     int32_t fixed = m_data->positions[pos];
     fixed |= m_data->positions[pos + 1] << 8;
     fixed |= m_data->positions[pos + 2] << 16;
-    fixed |= (fixed & 0x800000) ? 0xff000000 : 0;
-    return static_cast<double>(fixed) * m_fractionalScale;
+    fixed |= (fixed & 0x800000) ? 0xff000000 : 0; // sign extension to 32 bits
+    return static_cast<double>(fixed) * m_fractionalScale; 
 }
 
 float SpzReader::unpackSh(size_t pos)

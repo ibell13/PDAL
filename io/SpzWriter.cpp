@@ -4,7 +4,6 @@
 #include <pdal/util/OStream.hpp>
 
 #include <arbiter/arbiter.hpp>
-#include <spz/src/cc/load-spz.h>
 
 namespace pdal
 {
@@ -13,7 +12,7 @@ static StaticPluginInfo const s_info
 {
         "writers.spz",
         "SPZ writer",
-        "http://pdal.io/stages/",
+        "http://pdal.io/stages/writers.spz.html",
         { "spz" }
 };
 
@@ -31,27 +30,39 @@ void SpzWriter::addArgs(ProgramArgs& args)
 
 void SpzWriter::initialize()
 {
-    // could do a check for remote files here, don't think I need to
+    if (Utils::isRemote(filename()))
+    {
+        // swap our filename for a tmp file
+        std::string tmpname = Utils::tempFilename(filename());
+        m_remoteFilename = filename();
+        setFilename(tmpname);
+    }
 }
 
 void SpzWriter::checkDimensions(PointLayoutPtr layout)
 {
-    m_dims = layout->dimTypes();
-    for (const auto& dim : m_dims)
+    // looking for our spz-specific dims.
+    // we expect 3 scale and 4 rotation dimensions with PLY-style labels
+    for (int i = 0; i < 4; ++i)
     {
-        // looking for our spz-specific dims.
-        //!! Figure out what happens if we don't find them
-        //!! Not good to bank on all of these being in order. maybe sort the
-        // IdLists or do this another way.
+        m_scaleDims.push_back(layout->findDim("scale_" + std::to_string(i)));
+        if (i != 3)
+            m_rotDims.push_back(layout->findDim("rot_" + std::to_string(i)));
+    }
+    m_plyAlphaDim = layout->findProprietaryDim("opacity");
+
+    // find spherical harmonics dimensions and float RGB
+    //!! these are still assumed to be in the correct order
+    for (const auto& dim : layout->dimTypes())
+    {
         std::string dimName = Utils::tolower(layout->dimName(dim.m_id));
         if (Utils::startsWith(dimName, "f_rest_"))
             m_shDims.push_back(dim.m_id);
-        else if (Utils::startsWith(dimName, "scale_"))
-            m_scaleDims.push_back(dim.m_id);
-        else if (Utils::startsWith(dimName, "rot_"))
-            m_rotDims.push_back(dim.m_id);
+        if (Utils::startsWith(dimName, "f_dc_"))
+            m_plyColorDims.push_back(dim.m_id);
     }
 
+    // check spherical harmonics dimensions
     switch (m_shDims.size())
     {
         case 0:
@@ -73,6 +84,9 @@ void SpzWriter::checkDimensions(PointLayoutPtr layout)
             m_shDims.clear();
             m_shDegree = 0;
     }
+    // check float RGB
+    if (m_plyColorDims.size() != 3)
+        m_plyColorDims.clear();
 }
 
 void SpzWriter::prepared(PointTableRef table)
@@ -80,30 +94,32 @@ void SpzWriter::prepared(PointTableRef table)
     checkDimensions(table.layout());
 }
 
-//!! maybe put this into a lambda in write()?
-float tryGetDim(const PointRef& point, Dimension::Id id)
-{
-    float f;
-    try
-    {
-        f = point.getFieldAs<float>(id);
-    }
-    catch(std::exception&)
-    {
-        return 0.0f;
-    }
-
-    return f;
-}
-
-float unpackRgb(float rgb)
+float unpackRgb(int rgb)
 {
     return ((rgb / 255.0f) - 0.5f) / 0.15f;
 }
 
-float unpackAlpha(float alpha)
+float unpackAlpha(int alpha)
 {
     return std::log((alpha / 255.0f) / (1 - (alpha / 255.0f)));
+}
+
+//!! not great. a bit redundant
+void SpzWriter::assignRgb(const PointRef& point, size_t pos)
+{
+    //!! doing these checks for each point is a hassle. Better
+    //to know beforehand
+    if (m_plyColorDims.size())
+    {
+        for (int i = 0; i < 3; ++i)
+            m_cloud->colors[pos + i] = point.getFieldAs<float>(m_plyColorDims[i]);
+    }
+    else
+    {
+        m_cloud->colors[pos] = unpackRgb(point.getFieldAs<int>(Dimension::Id::Red));
+        m_cloud->colors[pos + 1] = unpackRgb(point.getFieldAs<int>(Dimension::Id::Green));
+        m_cloud->colors[pos + 2] = unpackRgb(point.getFieldAs<int>(Dimension::Id::Blue));
+    }
 }
 
 //!! messy
@@ -112,7 +128,7 @@ void SpzWriter::write(const PointViewPtr data)
     point_count_t pointCount = data->size();
     //!! do some check for the max size of file here? pointCount * ~64?
 
-    //!! from spz lib
+    // from spz lib
     m_cloud->positions.resize(pointCount * 3);
     m_cloud->scales.resize(pointCount * 3);
     m_cloud->rotations.resize(pointCount * 4);
@@ -131,34 +147,33 @@ void SpzWriter::write(const PointViewPtr data)
         m_cloud->positions[start3 + 1] = point.getFieldAs<float>(Dimension::Id::Y);
         m_cloud->positions[start3 + 2] = point.getFieldAs<float>(Dimension::Id::Z);
 
-        //!! this is assuming we have the correct order of scale & rotation dimensions. need to verify earlier
         for (int i = 0; i < 3; ++i)
         {
-            m_cloud->scales[start3 + i] = tryGetDim(point, m_scaleDims[i]);
+            m_cloud->scales[start3 + i] = point.getFieldAs<float>(m_scaleDims[i]);
         }
-        //!! could have 3 or 4 rotation dimensions (if W is included or not). Figure out what happens if not
+        // could have 3 or 4 rotation dimensions (if W is included or not). 
         size_t start4 = idx * 4;
         for (int i = 0; i < 4; ++i)
         {
-            m_cloud->rotations[start4 + i] = tryGetDim(point, m_rotDims[i]);
+            m_cloud->rotations[start4 + i] = point.getFieldAs<float>(m_rotDims[i]);
         }
-        //!! again, this is assuming RGB & alpha are present. fix.
-        //!! maybe to take into account PLY RGB dimensions ('f_dc_*' & 'opacity') - these could be float
-        //and wouldn't need to be unpacked from int.
-        //!! converting from int -> float -> int, bad (for alpha especially)
-        //!! using the tryGetDim method is casting all of these to floats before they get unpacked,
-        //and still doing math on them if it returns 0. Probably not ideal
-        m_cloud->alphas[size_t(idx)] = unpackAlpha(tryGetDim(point, Dimension::Id::Alpha));
-        m_cloud->colors[start3] = unpackRgb(tryGetDim(point, Dimension::Id::Red));
-        m_cloud->colors[start3 + 1] = unpackRgb(tryGetDim(point, Dimension::Id::Green));
-        m_cloud->colors[start3 + 2] = unpackRgb(tryGetDim(point, Dimension::Id::Blue));
+
+        assignRgb(point, start3);
+
+        //!! converting from int -> float -> int, bad
+        //!! both of these dims might not be there, and this would be pointless.
+        if (m_plyAlphaDim != Dimension::Id::Unknown)
+            m_cloud->alphas[size_t(idx)] = point.getFieldAs<float>(m_plyAlphaDim);
+        else
+            m_cloud->alphas[size_t(idx)] = unpackAlpha(
+                point.getFieldAs<int>(Dimension::Id::Alpha));
 
         if (m_shDegree)
         {
             size_t shPos = idx * m_shDims.size();
             for (size_t i = 0; i < m_shDims.size(); i++) 
             {
-                m_cloud->sh[shPos + i] = tryGetDim(point, m_shDims[i]);
+                m_cloud->sh[shPos + i] = point.getFieldAs<float>(m_shDims[i]);
             }
         }
     }
@@ -169,12 +184,22 @@ void SpzWriter::write(const PointViewPtr data)
 
 void SpzWriter::done(PointTableRef table)
 {
-    std::vector<char> data;
-    spz::saveSpz(*m_cloud.get(), &data);
+    //std::vector<uint8_t> data;
+    spz::saveSpz(*m_cloud.get(), filename());
 
-    // arbiter can write to local too, might as well just use it for everything
-    arbiter::Arbiter a;
-    a.put(filename(), data);
+    //!! if vector<char> could play nice with vector<uint8>, I could use the other version of 
+    //saveSpz & write everything w/ arbiter w/o worrying about temp files
+    if (m_remoteFilename.size())
+    {
+        arbiter::Arbiter a;
+        a.put(filename(), a.getBinary(filename()));
+
+        FileUtils::deleteFile(filename());
+
+        // probably don't need to do this
+        setFilename(m_remoteFilename);
+        m_remoteFilename.clear();
+    }
 }
 
 } // namespace pdal
