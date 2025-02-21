@@ -4,6 +4,7 @@
 #include <pdal/PointView.hpp>
 #include <pdal/util/IStream.hpp>
 
+#include <arbiter/arbiter.hpp>
 #include <spz/src/cc/load-spz.h>
 
 namespace pdal
@@ -50,10 +51,21 @@ void SpzReader::extractHeaderData()
 
 void SpzReader::initialize()
 {
+    // copy the file to local if it's remote
+    m_isRemote = Utils::isRemote(m_filename);
+    if (m_isRemote)
+    {
+        std::string remoteFilename = Utils::tempFilename(m_filename);
+        // swap m_filename to temp file, remoteFilename to original
+        std::swap(remoteFilename, m_filename);
+
+        arbiter::Arbiter a;
+        a.put(m_filename, a.getBinary(remoteFilename));
+    }
+
     ILeStream stream(m_filename);
     if (!stream)
         throwError("Unable to open file '" + m_filename + "'");
-    //!! probably should seek to end of stream differently
     stream.seek(0, std::ios::end);
     std::vector<uint8_t> data(stream.position());
     stream.seek(0, std::ios::beg);
@@ -126,8 +138,8 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
     PointId idx = view->size();
 
     count = (std::min)(m_numPoints - m_index, count);
-    //!! this needs to get set differently, or I need to use m_index in the loop instead
-    point_count_t numRead = 0;
+    //!! make sure all the indexing is happening correctly
+    point_count_t numRead = m_index;
     PointRef point = PointRef(*view, 0);
     while (numRead < count)
     {
@@ -152,7 +164,8 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
         }
         // rotation - w
         float squaredNorm = xyzSquared[0] + xyzSquared[1] + xyzSquared[2];
-        view->setField(m_rotDims[3], idx, std::sqrt(std::max(0.0f, 1.0f - squaredNorm)));
+        view->setField(m_rotDims[3], idx,
+            std::sqrt((std::max)(0.0f, 1.0f - squaredNorm)));
 
         // scale
         for (int i = 0; i < 3; ++i)
@@ -172,6 +185,10 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
 }
 
 void SpzReader::done(PointTableRef table)
-{}
+{
+    // delete tmp file
+    if (m_isRemote)
+        FileUtils::deleteFile(m_filename);
+}
 
 } // namespace pdal

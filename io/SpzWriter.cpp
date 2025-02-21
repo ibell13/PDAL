@@ -126,7 +126,7 @@ void SpzWriter::assignRgb(const PointRef& point, size_t pos)
 void SpzWriter::write(const PointViewPtr data)
 {
     point_count_t pointCount = data->size();
-    //!! do some check for the max size of file here? pointCount * ~64?
+    //!! do some check for the max size of file here?
 
     // from spz lib
     m_cloud->positions.resize(pointCount * 3);
@@ -184,7 +184,6 @@ void SpzWriter::write(const PointViewPtr data)
 
 void SpzWriter::done(PointTableRef table)
 {
-    //std::vector<uint8_t> data;
     spz::saveSpz(*m_cloud.get(), filename());
 
     //!! if vector<char> could play nice with vector<uint8>, I could use the other version of 

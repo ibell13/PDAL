@@ -20,6 +20,7 @@ public:
 private:
     point_count_t m_numPoints;
     point_count_t m_index;
+    bool m_isRemote;
     int m_numSh;
     float m_fractionalScale;
     //!! put these in a struct or something?

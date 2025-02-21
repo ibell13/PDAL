@@ -8,15 +8,6 @@
 namespace pdal
 {
 
-/* struct SpzDimensions
-{
-    Dimension::IdList shDims;
-    Dimension::IdList rotDims;
-    Dimension::IdList scaleDims;
-    Dimension::IdList colorDims;
-    Dimension::Id opacity;
-};
- */
 class PDAL_EXPORT SpzWriter : public Writer
 {
 public:
