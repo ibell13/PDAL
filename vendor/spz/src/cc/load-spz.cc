@@ -343,9 +343,9 @@ PackedGaussian PackedGaussians::at(int i) const {
   int start3 = i * 3;
   const auto *p = &positions[i * positionBits];
   std::copy(p, p + positionBits, result.position.data());
-  std::copy(&scales[start3], &scales[start3 + 3], result.scale.data());
-  std::copy(&rotations[start3], &rotations[start3 + 3], result.rotation.data());
-  std::copy(&colors[start3], &colors[start3 + 3], result.color.data());
+  std::copy(&scales[start3], &scales[start3] + 3, result.scale.data());
+  std::copy(&rotations[start3], &rotations[start3] + 3, result.rotation.data());
+  std::copy(&colors[start3], &colors[start3] + 3, result.color.data());
   result.alpha = alphas[i];
 
   int shDim = dimForDegree(shDegree);
@@ -366,6 +366,60 @@ PackedGaussian PackedGaussians::at(int i) const {
 
 UnpackedGaussian PackedGaussians::unpack(int i) const {
   return at(i).unpack(usesFloat16(), fractionalBits);
+}
+
+// need to initialize the header first
+void PackedGaussians::pack(const UnpackedGaussian& g) {
+  
+  // add position
+  const float scale = (1 << fractionalBits);
+  for (int i = 0; i <3; i++)
+  {
+    const int32_t fixed32 = static_cast<int32_t>(std::round(g.position[i] * scale));
+    positions.push_back(fixed32 & 0xff);
+    positions.push_back((fixed32 >> 8) & 0xff);
+    positions.push_back((fixed32 >> 16) & 0xff);
+  }
+
+  // add scales
+  for (int i = 0; i < 3; i++) {
+    scales.push_back(toUint8((g.scale[i] + 10.0f) * 16.0f));
+  }
+
+  // add alpha
+  alphas.push_back(toUint8(sigmoid(g.alpha) * 255.0f));
+
+  for (int i = 0; i < 3; i++) {
+    // Convert SH DC component to wide RGB (allowing values that are a bit above 1 and below 0).
+    colors.push_back(toUint8(g.color[i] * (colorScale * 255.0f) + (0.5f * 255.0f)));
+  }
+
+  // add rotations
+  Quat4f q = normalized(quat4f(&g.rotation[0]));
+  q = times(q, (q[3] < 0 ? -127.5f : 127.5f));
+  q = plus(q, Quat4f{127.5f, 127.5f, 127.5f, 127.5f});
+  //!! do this all at once?
+  rotations.push_back(toUint8(q[0]));
+  rotations.push_back(toUint8(q[1]));
+  rotations.push_back(toUint8(q[2]));
+
+  if (shDegree > 0) {
+    constexpr int sh1Bits = 5;
+    constexpr int shRestBits = 4;
+    //!! this is recalculated for each point... not good
+    const int shDim = dimForDegree(shDegree);
+    int j = 0;
+    for (; j < 3; j++) {  // 3 coefficients for degree 1
+      sh.push_back(quantizeSH(g.shR[j], 1 << (8 - sh1Bits)));
+      sh.push_back(quantizeSH(g.shG[j], 1 << (8 - sh1Bits)));
+      sh.push_back(quantizeSH(g.shB[j], 1 << (8 - sh1Bits)));
+    }
+    for (; j < shDim; j++) {
+      sh.push_back(quantizeSH(g.shR[j], 1 << (8 - shRestBits)));
+      sh.push_back(quantizeSH(g.shG[j], 1 << (8 - shRestBits)));
+      sh.push_back(quantizeSH(g.shB[j], 1 << (8 - shRestBits)));
+    }
+  }
 }
 
 bool PackedGaussians::usesFloat16() const { return positions.size() == (size_t)numPoints * 3 * 2; }
@@ -513,6 +567,26 @@ bool saveSpz(const GaussianCloud &g, std::vector<uint8_t> *out) {
     data = ss.str();
   }
   return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out);
+}
+
+bool saveSpzPacked(const PackedGaussians &g, std::vector<uint8_t> *out) {
+  std::string data;
+  {
+    std::stringstream ss;
+    serializePackedGaussians(g, ss);
+    data = ss.str();
+  }
+  return compressGzipped(reinterpret_cast<const uint8_t *>(data.data()), data.size(), out); 
+}
+
+bool saveSpzPacked(const PackedGaussians &g, const std::string &filename) {
+  std::vector<uint8_t> data;
+  if (!saveSpzPacked(g, &data))
+    return false;
+  std::ofstream out(filename, std::ios::binary | std::ios::out);
+  out.write(reinterpret_cast<const char *>(data.data()), data.size());
+  out.close();
+  return out.good();
 }
 
 PackedGaussians loadSpzPacked(const uint8_t *data, int size) {

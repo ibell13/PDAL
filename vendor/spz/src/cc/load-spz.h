@@ -52,6 +52,7 @@ struct PackedGaussians {
   bool usesFloat16() const;
   PackedGaussian at(int i) const;
   UnpackedGaussian unpack(int i) const;
+  void pack(const UnpackedGaussian& gaussian);
 };
 
 // Saves Gaussian splat in packed format, returning a vector of bytes.
@@ -64,6 +65,10 @@ GaussianCloud loadSpz(const std::vector<uint8_t> &data);
 PackedGaussians loadSpzPacked(const std::string &filename);
 PackedGaussians loadSpzPacked(const uint8_t* data, int size);
 PackedGaussians loadSpzPacked(const std::vector<uint8_t> &data);
+
+// PDAL: add for write support. Put this in another header
+bool saveSpzPacked(const PackedGaussians &g, std::vector<uint8_t> *output);
+bool saveSpzPacked(const PackedGaussians &g, const std::string &filename);
 
 // Saves Gaussian splat in packed format to a file
 bool saveSpz(const GaussianCloud &g, const std::string &filename);
