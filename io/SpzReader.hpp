@@ -19,8 +19,8 @@ private:
     point_count_t m_numPoints;
     point_count_t m_index;
     bool m_isRemote;
+    // number of spherical harmonics for each color (RGB)
     int m_numSh;
-    float m_fractionalScale;
     //!! put these in a struct or something?
     Dimension::IdList m_shDims;
     Dimension::IdList m_rotDims;

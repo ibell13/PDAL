@@ -24,28 +24,18 @@ SpzReader::SpzReader()
 {}
 
 void SpzReader::addArgs(ProgramArgs& args)
-{}
+{
+    //!! Should give the option to write RGB/alpha as float or int;
+    //or add a full spec for the dimensions.
+}
 
 void SpzReader::extractHeaderData()
 {
     m_numPoints = m_data->numPoints;
-    m_fractionalScale = 1.0 / (1 << m_data->fractionalBits);
 
-    switch (m_data->shDegree)
-    {
-        case 0:
-            m_numSh = 0;
-            break;
-        case 1:
-            m_numSh = 9;
-            break;
-        case 2:
-            m_numSh = 24;
-            break;
-        case 3:
-            m_numSh = 45;
-            break;
-    }
+    // total number of harmonics / 3
+    constexpr std::array<int, 4> numHarmonics { 0, 3, 8, 15 };
+    m_numSh = numHarmonics[m_data->shDegree];
 }
 
 void SpzReader::initialize()
@@ -101,7 +91,7 @@ void SpzReader::addDimensions(PointLayoutPtr layout)
         m_rotDims.push_back(layout->assignDim("rot_" + std::to_string(i),
             Type::Float));
 
-    for (int i = 0; i < m_numSh; ++i)
+    for (int i = 0; i < (m_numSh * 3); ++i)
         m_shDims.push_back(layout->assignDim("f_rest_" + std::to_string(i),
             Type::Float));
 }
@@ -111,27 +101,6 @@ void SpzReader::ready(PointTableRef table)
     m_index = 0;
 }
 
-// each X/Y/Z position gets extracted from a triplet
-double SpzReader::extractPositions(size_t pos)
-{
-    // Decode 24-bit fixed point coordinates
-    int32_t fixed = m_data->positions[pos];
-    fixed |= m_data->positions[pos + 1] << 8;
-    fixed |= m_data->positions[pos + 2] << 16;
-    fixed |= (fixed & 0x800000) ? 0xff000000 : 0; // sign extension to 32 bits
-    return static_cast<double>(fixed) * m_fractionalScale; 
-}
-
-float SpzReader::unpackSh(size_t pos)
-{
-    return (static_cast<float>(m_data->sh[pos]) - 128.0f) / 128.0f;
-}
-
-float SpzReader::unpackScale(size_t pos)
-{
-    return m_data->scales[pos] / 16.0f - 10.0f;
-}
-
 point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
 {
     PointId idx = view->size();
@@ -139,41 +108,39 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
     count = (std::min)(m_numPoints - m_index, count);
     //!! make sure all the indexing is happening correctly
     point_count_t numRead = m_index;
-    PointRef point = PointRef(*view, 0);
     while (numRead < count)
     {
+        //!! keeping this for now so we don't lose data on the type conversions.
+        //should add some options for dim assignment.
         size_t start3 = numRead * 3;
-        size_t xPos = start3 * 3;
-
-        view->setField(Dimension::Id::X, idx, extractPositions(xPos));
-        view->setField(Dimension::Id::Y, idx, extractPositions(xPos + 3));
-        view->setField(Dimension::Id::Z, idx, extractPositions(xPos + 6));
         view->setField(Dimension::Id::Alpha, idx, m_data->alphas[numRead]);
         view->setField(Dimension::Id::Red, idx, m_data->colors[start3]);
         view->setField(Dimension::Id::Green, idx, m_data->colors[start3 + 1]);
         view->setField(Dimension::Id::Blue, idx, m_data->colors[start3 + 2]);
 
+        spz::UnpackedGaussian unpacked = m_data->unpack(numRead);
+
+        view->setField(Dimension::Id::X, idx, unpacked.position[0]);
+        view->setField(Dimension::Id::Y, idx, unpacked.position[1]);
+        view->setField(Dimension::Id::Z, idx, unpacked.position[2]);
+
+
         // rotation - xyz
-        std::vector<float> xyzSquared;
-        for (int i = 0; i < 3; ++i)
-        {
-            float rotation = (m_data->rotations[start3 + i] / 127.5f) - 1;
-            view->setField(m_rotDims[i], idx, rotation);
-            xyzSquared.push_back(rotation * rotation);
-        }
-        // rotation - w
-        float squaredNorm = xyzSquared[0] + xyzSquared[1] + xyzSquared[2];
-        view->setField(m_rotDims[3], idx,
-            std::sqrt((std::max)(0.0f, 1.0f - squaredNorm)));
+        for (size_t i = 0; i < 4; ++i)
+            view->setField(m_rotDims[i], idx, unpacked.rotation[i]);
 
         // scale
-        for (int i = 0; i < 3; ++i)
-            view->setField(m_scaleDims[i], idx, unpackScale(start3 + i));
+        for (size_t i = 0; i < 3; ++i)
+            view->setField(m_scaleDims[i], idx, unpacked.scale[i]);
 
         // spherical harmonics
-        size_t shPos = numRead * m_numSh;
-        for (int i = 0; i < m_numSh; ++i)
-            view->setField(m_shDims[i], idx, unpackSh(shPos + i));
+        for (size_t i = 0; i < m_numSh; i)
+        {
+            size_t pos = i * 3;
+            view->setField(m_shDims[pos], idx, unpacked.shR[i]);
+            view->setField(m_shDims[pos + 1], idx, unpacked.shG[i]);
+            view->setField(m_shDims[pos + 2], idx, unpacked.shB[i]);
+        }
 
         numRead++;
         idx++;
