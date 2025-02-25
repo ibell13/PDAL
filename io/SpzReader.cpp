@@ -106,11 +106,9 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
     PointId idx = view->size();
 
     count = (std::min)(m_numPoints - m_index, count);
-    //!! make sure all the indexing is happening correctly
     point_count_t numRead = m_index;
     while (numRead < count)
     {
-        std::cout << "reading point " << numRead << '\n';
         //!! keeping this for now so we don't lose data on the type conversions.
         //should add some options for dim assignment.
         size_t start3 = numRead * 3;
@@ -126,7 +124,7 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
         view->setField(Dimension::Id::Z, idx, unpacked.position[2]);
 
 
-        // rotation - xyz
+        // rotation - xyzw
         for (int i = 0; i < 4; ++i)
             view->setField(m_rotDims[i], idx, unpacked.rotation[i]);
 

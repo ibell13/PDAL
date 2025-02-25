@@ -22,7 +22,6 @@ private:
     virtual void done(PointTableRef table);
 
     void checkDimensions(PointLayoutPtr layout);
-    void assignRgb(const PointRef& point, size_t pos);
 
     bool m_antialiased;
     int m_shDegree;

@@ -104,12 +104,8 @@ float unpackAlpha(int alpha)
     return std::log((alpha / 255.0f) / (1 - (alpha / 255.0f)));
 }
 
-//!! not great. a bit redundant
-void SpzWriter::assignRgb(const PointRef& point, size_t pos)
-{
-}
 
-//!! messy
+
 void SpzWriter::write(const PointViewPtr data)
 {
     point_count_t pointCount = data->size();
@@ -118,6 +114,9 @@ void SpzWriter::write(const PointViewPtr data)
     m_cloud->numPoints = int(pointCount);
     m_cloud->shDegree = m_shDegree;
     m_cloud->antialiased = m_antialiased;
+    //!! spz lib always uses 12 fractional bits when packing. We can probably change
+    //this, or maybe let the user specify.
+    m_cloud->fractionalBits = 12;
 
     //!! spz lib uses resize, but we want to push back.
     //Could change pack() to use positions instead
@@ -129,7 +128,6 @@ void SpzWriter::write(const PointViewPtr data)
     m_cloud->sh.reserve(pointCount * m_shDims.size());
 
     size_t numSh = m_shDims.size() / 3;
-    std::cout << "numSH " << numSh << '\n';
     PointRef point(*data, 0);
     for (PointId idx = 0; idx < pointCount; ++idx)
     {
@@ -189,7 +187,8 @@ void SpzWriter::write(const PointViewPtr data)
 
 void SpzWriter::done(PointTableRef table)
 {
-    spz::saveSpzPacked(*m_cloud.get(), filename());
+    if (!spz::saveSpzPacked(*m_cloud.get(), filename()))
+        throwError("Unable to save SPZ data to " + filename());
 
     //!! if vector<char> could play nice with vector<uint8>, I could use the other version of 
     //saveSpz & write everything w/ arbiter w/o worrying about temp files
