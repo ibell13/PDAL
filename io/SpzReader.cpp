@@ -110,6 +110,7 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
     point_count_t numRead = m_index;
     while (numRead < count)
     {
+        std::cout << "reading point " << numRead << '\n';
         //!! keeping this for now so we don't lose data on the type conversions.
         //should add some options for dim assignment.
         size_t start3 = numRead * 3;
@@ -126,15 +127,15 @@ point_count_t SpzReader::read(PointViewPtr view, point_count_t count)
 
 
         // rotation - xyz
-        for (size_t i = 0; i < 4; ++i)
+        for (int i = 0; i < 4; ++i)
             view->setField(m_rotDims[i], idx, unpacked.rotation[i]);
 
         // scale
-        for (size_t i = 0; i < 3; ++i)
+        for (int i = 0; i < 3; ++i)
             view->setField(m_scaleDims[i], idx, unpacked.scale[i]);
 
         // spherical harmonics
-        for (size_t i = 0; i < m_numSh; i)
+        for (int i = 0; i < m_numSh; ++i)
         {
             size_t pos = i * 3;
             view->setField(m_shDims[pos], idx, unpacked.shR[i]);

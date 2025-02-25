@@ -18,7 +18,7 @@ static StaticPluginInfo const s_info
 
 CREATE_STATIC_STAGE(SpzWriter, s_info)
 
-SpzWriter::SpzWriter() : m_cloud(new spz::GaussianCloud)
+SpzWriter::SpzWriter() : m_cloud(new spz::PackedGaussians)
 {}
 
 std::string SpzWriter::getName() const { return s_info.name; }
@@ -107,19 +107,6 @@ float unpackAlpha(int alpha)
 //!! not great. a bit redundant
 void SpzWriter::assignRgb(const PointRef& point, size_t pos)
 {
-    //!! doing these checks for each point is a hassle. Better
-    //to know beforehand
-    if (m_plyColorDims.size())
-    {
-        for (int i = 0; i < 3; ++i)
-            m_cloud->colors[pos + i] = point.getFieldAs<float>(m_plyColorDims[i]);
-    }
-    else
-    {
-        m_cloud->colors[pos] = unpackRgb(point.getFieldAs<int>(Dimension::Id::Red));
-        m_cloud->colors[pos + 1] = unpackRgb(point.getFieldAs<int>(Dimension::Id::Green));
-        m_cloud->colors[pos + 2] = unpackRgb(point.getFieldAs<int>(Dimension::Id::Blue));
-    }
 }
 
 //!! messy
@@ -128,63 +115,81 @@ void SpzWriter::write(const PointViewPtr data)
     point_count_t pointCount = data->size();
     //!! do some check for the max size of file here?
 
-    // from spz lib
-    m_cloud->positions.resize(pointCount * 3);
-    m_cloud->scales.resize(pointCount * 3);
-    m_cloud->rotations.resize(pointCount * 4);
-    m_cloud->alphas.resize(pointCount);
-    m_cloud->colors.resize(pointCount * 3);
-    m_cloud->sh.resize(pointCount * m_shDims.size());
+    m_cloud->numPoints = int(pointCount);
+    m_cloud->shDegree = m_shDegree;
+    m_cloud->antialiased = m_antialiased;
 
+    //!! spz lib uses resize, but we want to push back.
+    //Could change pack() to use positions instead
+    m_cloud->positions.reserve(pointCount * 9);
+    m_cloud->scales.reserve(pointCount * 3);
+    m_cloud->rotations.reserve(pointCount * 3);
+    m_cloud->alphas.reserve(pointCount);
+    m_cloud->colors.reserve(pointCount * 3);
+    m_cloud->sh.reserve(pointCount * m_shDims.size());
+
+    size_t numSh = m_shDims.size() / 3;
+    std::cout << "numSH " << numSh << '\n';
     PointRef point(*data, 0);
     for (PointId idx = 0; idx < pointCount; ++idx)
     {
         point.setPointId(idx);
-        size_t start3 = idx * 3;
+        spz::UnpackedGaussian gaussian;
 
         //!! combine these?
-        m_cloud->positions[start3] = point.getFieldAs<float>(Dimension::Id::X);
-        m_cloud->positions[start3 + 1] = point.getFieldAs<float>(Dimension::Id::Y);
-        m_cloud->positions[start3 + 2] = point.getFieldAs<float>(Dimension::Id::Z);
+        gaussian.position[0] = point.getFieldAs<float>(Dimension::Id::X);
+        gaussian.position[1] = point.getFieldAs<float>(Dimension::Id::Y);
+        gaussian.position[2] = point.getFieldAs<float>(Dimension::Id::Z);
 
         for (int i = 0; i < 3; ++i)
         {
-            m_cloud->scales[start3 + i] = point.getFieldAs<float>(m_scaleDims[i]);
+            gaussian.scale[i] = point.getFieldAs<float>(m_scaleDims[i]);
         }
         // could have 3 or 4 rotation dimensions (if W is included or not). 
         size_t start4 = idx * 4;
         for (int i = 0; i < 4; ++i)
         {
-            m_cloud->rotations[start4 + i] = point.getFieldAs<float>(m_rotDims[i]);
+            gaussian.rotation[i] = point.getFieldAs<float>(m_rotDims[i]);
         }
 
-        assignRgb(point, start3);
+        //!! colors and alpha converting from int -> float -> int
 
-        //!! converting from int -> float -> int, bad
+        //!! doing these checks for each point is a hassle. Better
+        //to know beforehand
+        if (m_plyColorDims.size())
+        {
+            for (int i = 0; i < 3; ++i)
+                gaussian.color[i] = point.getFieldAs<float>(m_plyColorDims[i]);
+        }
+        else
+        {
+            gaussian.color[0] = unpackRgb(point.getFieldAs<int>(Dimension::Id::Red));
+            gaussian.color[1] = unpackRgb(point.getFieldAs<int>(Dimension::Id::Green));
+            gaussian.color[2] = unpackRgb(point.getFieldAs<int>(Dimension::Id::Blue));
+        }
+
         //!! both of these dims might not be there, and this would be pointless.
         if (m_plyAlphaDim != Dimension::Id::Unknown)
-            m_cloud->alphas[size_t(idx)] = point.getFieldAs<float>(m_plyAlphaDim);
+            gaussian.alpha = point.getFieldAs<float>(m_plyAlphaDim);
         else
-            m_cloud->alphas[size_t(idx)] = unpackAlpha(
-                point.getFieldAs<int>(Dimension::Id::Alpha));
+            gaussian.alpha = unpackAlpha(point.getFieldAs<int>(Dimension::Id::Alpha));
 
         if (m_shDegree)
         {
-            size_t shPos = idx * m_shDims.size();
-            for (size_t i = 0; i < m_shDims.size(); i++) 
+            for (size_t i = 0; i < numSh; i++) 
             {
-                m_cloud->sh[shPos + i] = point.getFieldAs<float>(m_shDims[i]);
+                gaussian.shR[i] = point.getFieldAs<float>(m_shDims[i]);
+                gaussian.shG[i] = point.getFieldAs<float>(m_shDims[i + 1]);
+                gaussian.shB[i] = point.getFieldAs<float>(m_shDims[i + 2]);
             }
         }
+        m_cloud->pack(gaussian);
     }
-    m_cloud->numPoints = int(pointCount);
-    m_cloud->shDegree = m_shDegree;
-    m_cloud->antialiased = m_antialiased;
 }
 
 void SpzWriter::done(PointTableRef table)
 {
-    spz::saveSpz(*m_cloud.get(), filename());
+    spz::saveSpzPacked(*m_cloud.get(), filename());
 
     //!! if vector<char> could play nice with vector<uint8>, I could use the other version of 
     //saveSpz & write everything w/ arbiter w/o worrying about temp files

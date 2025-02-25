@@ -406,7 +406,6 @@ void PackedGaussians::pack(const UnpackedGaussian& g) {
   if (shDegree > 0) {
     constexpr int sh1Bits = 5;
     constexpr int shRestBits = 4;
-    //!! this is recalculated for each point... not good
     const int shDim = dimForDegree(shDegree);
     int j = 0;
     for (; j < 3; j++) {  // 3 coefficients for degree 1

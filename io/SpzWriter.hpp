@@ -28,7 +28,7 @@ private:
     int m_shDegree;
     std::string m_remoteFilename;
     DimTypeList m_dims;
-    std::unique_ptr<spz::GaussianCloud> m_cloud;
+    std::unique_ptr<spz::PackedGaussians> m_cloud;
     //!! again, maybe keep these grouped together
     Dimension::IdList m_shDims;
     Dimension::IdList m_rotDims;
