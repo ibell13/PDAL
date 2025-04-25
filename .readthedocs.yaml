@@ -17,11 +17,12 @@ build:
         - jupyter-book build doc/
         - mkdir -p $READTHEDOCS_OUTPUT/html/
         - cp -R doc/_build/html/* $READTHEDOCS_OUTPUT/html/
-      # not sure how this compares to --builder=latex + latexmk (rtd default)
       pdf:
-        - jupyter-book build --builder pdflatex doc/
+        - jupyter-book build --builder latex doc/
         - mkdir -p $READTHEDOCS_OUTPUT/pdf/
         - cp -R doc/_build/latex/* $READTHEDOCS_OUTPUT/pdf/
+        - cat latexmkrc
+        - latexmk -r latexmkrc -pdf -f -dvi- -ps- -jobname=pdal -interaction=nonstopmode
       htmlzip:
         - jupyter-book build --builder singlehtml doc/
         - mkdir -p $READTHEDOCS_OUTPUT/htmlzip/
