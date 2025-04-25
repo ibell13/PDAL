@@ -21,6 +21,7 @@ build:
         - jupyter-book build --builder latex doc/
         - mkdir -p $READTHEDOCS_OUTPUT/pdf/
         - cp -R doc/_build/latex/* $READTHEDOCS_OUTPUT/pdf/
+        - cd $READTHEDOCS_OUTPUT/pdf/
         - cat latexmkrc
         - latexmk -r latexmkrc -pdf -f -dvi- -ps- -jobname=pdal -interaction=nonstopmode
       htmlzip:
