@@ -19,6 +19,7 @@ build:
         - cp -R doc/_build/html/* $READTHEDOCS_OUTPUT/html/
       pdf:
         - jupyter-book build --builder latex doc/
+        - mkdir -p $READTHEDOCS_OUTPUT/pdf/
         - cp -R doc/_build/latex/* $READTHEDOCS_OUTPUT/pdf/
         - cat $READTHEDOCS_OUTPUT/pdf/latexmkrc
         - cd $READTHEDOCS_OUTPUT/pdf && latexmk -r latexmkrc -pdf -f -dvi- -ps- -jobname=pdal -interaction=nonstopmode
