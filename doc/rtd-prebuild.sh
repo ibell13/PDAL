@@ -14,4 +14,4 @@ cmake \
 # Target makes dimension-table.csv, runs doxygen
 cmake --build . --target doxygen
 cmake --build . --target jupyterbook_config
-sed -i "1i\import os, sys; sys.path.append(os.path.abspath(\"./_ext\"))" conf.py
+sed -i "1i\import os, sys; sys.path.append(os.path.abspath(\"./_ext\"))" ../conf.py
