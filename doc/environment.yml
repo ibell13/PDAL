@@ -8,3 +8,4 @@ dependencies:
   - sphinxcontrib-jquery
   - sphinx-notfound-page
   - sphinx-inline-tabs
+  - cmake
