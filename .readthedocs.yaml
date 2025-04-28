@@ -20,9 +20,7 @@ build:
       pdf:
         - jupyter-book build --builder latex doc/
         - mkdir -p $READTHEDOCS_OUTPUT/pdf/
-        - cd doc/_build/latex
-        - ls
-        - cat latexmkrc
+        - cat doc/_build/latex/latexmkrc
       htmlzip:
         - jupyter-book build --builder singlehtml doc/
         - mkdir -p $READTHEDOCS_OUTPUT/htmlzip/
