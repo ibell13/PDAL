@@ -18,10 +18,12 @@ build:
         - mkdir -p $READTHEDOCS_OUTPUT/html/
         - cp -R doc/_build/html/* $READTHEDOCS_OUTPUT/html/
       pdf:
+        - jupyter-book config sphinx
         - jupyter-book build --builder latex doc/
         - mkdir -p $READTHEDOCS_OUTPUT/pdf/
         - cp -R doc/_build/latex/* $READTHEDOCS_OUTPUT/pdf/
-        - cd $READTHEDOCS_OUTPUT/pdf/
+        - cd $READTHEDOCS_OUTPUT
+        - ls
         - cat latexmkrc
         - latexmk -r latexmkrc -pdf -f -dvi- -ps- -jobname=pdal -interaction=nonstopmode
       htmlzip:
