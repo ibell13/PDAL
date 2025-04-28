@@ -40,4 +40,4 @@ sphinx:
 conda:
   environment: doc/environment.yml
 
-formats: pdf
+formats: all
