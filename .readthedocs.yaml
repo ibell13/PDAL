@@ -12,15 +12,6 @@ build:
   jobs:
     pre_build:
       - ./doc/rtd-prebuild.sh
-    build:
-      html:
-        - jupyter-book build doc/
-        - mkdir -p $READTHEDOCS_OUTPUT/html/
-        - cp -R doc/_build/html/* $READTHEDOCS_OUTPUT/html/
-      epub:
-        - jupyter-book build --builder custom --custom-builder epub doc/
-        - mkdir -p $READTHEDOCS_OUTPUT/epub/
-        - cp -R doc/_build/epub/* $READTHEDOCS_OUTPUT/epub/
   apt_packages:
     - graphviz
 
