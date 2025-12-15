@@ -37,6 +37,7 @@
 #include <Eigen/Geometry>
 #include <algorithm>
 #include <numeric>
+#include <chrono>
 
 #include "private/NormalUtils.hpp"
 #include "private/Comparison.hpp"
@@ -143,6 +144,7 @@ PointViewSet M3C2Filter::run(PointViewPtr view)
 
 void M3C2Filter::done(PointTableRef _)
 {
+    std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
     if (!m_p->v1)
         throwError("Missing first view.");
     if (!m_p->v2)
@@ -153,11 +155,14 @@ void M3C2Filter::done(PointTableRef _)
         createSample(*m_p->v1, *m_p->cores);
     }
     calcStats(*m_p->v1, *m_p->v2, *m_p->cores);
+    std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+    std::cout << "M3C2 took " << std::chrono::duration_cast<std::chrono::seconds>(t2 - t1).count() << "s" << std::endl;
 }
 
 // Super simple sampling.  We just take random points up to the percentage requested.
 void M3C2Filter::createSample(PointView& source, PointView& dest)
 {
+    std::cout << "running createSample" << std::endl;
     PointIdList ids(source.size());
     std::iota(ids.begin(), ids.end(), 0);
     std::random_device gen;
@@ -172,9 +177,12 @@ void M3C2Filter::createSample(PointView& source, PointView& dest)
 void M3C2Filter::calcStats(PointView& v1, PointView& v2, PointView& cores)
 {
     Stats stats;
+    std::cout << "num cores = " << cores.size() << std::endl;
 
     for (PointRef core : cores)
     {
+        std::cout << "Processing point: " << core.pointId() << std::endl;
+        std::chrono::high_resolution_clock::time_point t1 = std::chrono::high_resolution_clock::now();
         Eigen::Vector3d pos(core.getFieldAs<double>(Dimension::Id::X),
             core.getFieldAs<double>(Dimension::Id::Y),
             core.getFieldAs<double>(Dimension::Id::Z));
@@ -195,6 +203,8 @@ void M3C2Filter::calcStats(PointView& v1, PointView& v2, PointView& cores)
             core.setField(m_p->n1Dim, stats.n1);
             core.setField(m_p->n2Dim, stats.n2);
         }
+        std::chrono::high_resolution_clock::time_point t2 = std::chrono::high_resolution_clock::now();
+        std::cout << "M3C2 took " << std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count() << "ms" << std::endl;
     }
 }
 
